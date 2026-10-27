@@ -1,0 +1,16 @@
+<section class="panel"><details><summary>Correções e conferência do histórico</summary>
+<p class="help">Escolha a operação pelo fato ocorrido. A evidência importada permanece intacta; todo ajuste exige justificativa. Liberar um vínculo não desfaz o pagamento ao banco.</p>
+<form id="history-operation-form" class="stack-form"><label>O que deseja corrigir?<select name="kind"><option value="adjustment">Alterar compromisso / estorno</option><option value="baseline_refund">Dinheiro devolvido de pagamento antigo</option><option value="release">Liberar vínculo equivocado</option><option value="allocate">Reaplicar valor sem vínculo</option><option value="refund">Dinheiro devolvido de pagamento ou repasse novo</option><option value="refund_credit">Devolver dinheiro sem vínculo</option><option value="move">Corrigir ciclo de parcela não paga</option><option value="reconcile">Conferir total do ciclo histórico</option></select></label>
+<p id="history-operation-hint" class="info"></p><div class="form-grid">
+<label id="history-op-record-field">Parcela histórica<select name="record" id="history-op-record"></select></label>
+<label id="history-op-event-field">Pagamento ou repasse já registrado<select name="event" id="history-op-event"></select></label>
+<label id="history-op-link-field">Vínculo de origem<select name="link" id="history-op-link"></select></label>
+<label id="history-op-direction-field">Efeito no compromisso<select name="direction"><option value="decrease">Reduzir / estornar</option><option value="increase">Acrescentar / corrigir</option></select></label>
+<label id="history-op-amount-field">Valor da operação (R$)<input name="amount" inputmode="decimal"></label>
+<label id="history-op-account-field">Conta que recebeu a devolução<select name="account" id="history-op-account"></select></label>
+<label id="history-op-month-field">Mês da fatura de destino ou conferência<input name="month" type="month"></label>
+<label id="history-op-card-field">Cartão da conferência<select name="card"><option value="nubank">Nubank</option><option value="mercado_pago">Mercado Pago/Livre</option></select></label>
+<label>Data da operação<input name="occurred_on" type="date" required></label>
+<label class="full">Justificativa / identificação do documento<textarea name="reason" maxlength="1000" required rows="2"></textarea></label></div>
+<button class="primary">Salvar correção do histórico</button></form></details>
+<h3>Histórico das correções</h3><ul id="history-operations-list" class="record-list"></ul><footer class="pagination"><span id="history-operations-position"></span><button id="history-operations-prev" class="secondary">Anteriores</button><button id="history-operations-next" class="secondary">Próximas</button></footer></section>

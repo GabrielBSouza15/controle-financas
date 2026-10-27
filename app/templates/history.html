@@ -1,0 +1,37 @@
+<section id="history-view" hidden>
+<header class="page-header"><div><h1>Histórico da planilha</h1><p>Parcelas preservadas da planilha e novos fatos com data comprovada.</p></div><button id="history-refresh" class="secondary">Atualizar histórico</button></header>
+<div class="info">A marcação antiga de Pago não tem data e não gera caixa. Parcelas futuras pendentes não são necessariamente atrasadas. Repasses anteriores de Pai/Mãe continuam desconhecidos.</div>
+{% if history_candidate %}<p class="info">Conferência do histórico: esta base ainda não foi adotada. Todos os recursos estão disponíveis; novos registros feitos aqui pertencem a este candidato.</p>{% endif %}
+<p id="history-no-data" class="empty" hidden>Este banco não contém o histórico reconstruído. Use o atalho da base principal para consultar as origens.</p>
+<div id="history-content" hidden>
+{% include "history_operations.html" %}
+<div class="invoice-totals"><div><span>Parcelas ainda pendentes</span><strong id="history-pending">—</strong><small id="history-pending-count"></small></div><div><span>Entradas efetivas novas</span><strong id="history-in">—</strong></div><div><span>Saídas efetivas novas</span><strong id="history-out">—</strong></div></div>
+<p id="history-opening" class="help"></p>
+<form id="history-filters" class="panel invoice-filters">
+<label>Descrição<input name="q" type="search" maxlength="200"></label>
+<label>Cartão<select name="card_code"><option value="">Todos</option><option value="nubank">Nubank</option><option value="mercado_pago">Mercado Pago/Livre</option></select></label>
+<label>Responsável<select name="responsible_code"><option value="">Todos</option><option value="self">Eu</option><option value="parents">Pai/Mãe</option></select></label>
+<label>Mês do ciclo / obrigação<input name="month" type="month"></label>
+<label>Situação<select name="pending_only"><option value="true">Somente pendentes</option><option value="">Todas as origens</option></select></label>
+<div class="filter-actions"><button class="primary">Filtrar histórico</button><button type="reset" class="secondary">Limpar</button></div>
+</form>
+<p id="history-error" class="form-error" role="alert" hidden></p>
+<section class="panel"><div class="section-heading"><h2>Parcelas e origem</h2><span id="history-count" class="muted"></span></div>
+<div class="table-wrap"><table><thead><tr><th>Origem / referência</th><th>Descrição / responsável</th><th>Parcela original</th><th class="number">Valor</th><th>Situação registrada</th><th>Ações</th></tr></thead><tbody id="history-rows"></tbody></table></div>
+<p id="history-records-empty" class="help" hidden>Nenhum registro neste filtro.</p>
+<footer class="pagination"><span id="history-position"></span><div><button id="history-prev" class="secondary">Anterior</button><button id="history-next" class="secondary">Próxima</button></div></footer></section>
+<section class="panel"><h2>Cartões por ciclo simulado</h2><p class="help">O total é o compromisso observado. Pago antigo, novos pagamentos e pendência são apresentados separadamente. Liberar um vínculo não desfaz o pagamento ao banco: reaplique o crédito disponível. A conferência compara o total com o documento do emissor.</p>
+<div class="table-wrap"><table><thead><tr><th>Cartão / ciclo</th><th class="number">Total observado</th><th class="number">Pago antigo sem data</th><th class="number">Novos valores vinculados</th><th class="number">Restante ao banco</th><th class="number">Pago sem vínculo</th><th>Conferência</th></tr></thead><tbody id="history-cycles"></tbody></table></div></section>
+<section class="panel"><h2>Novos registros ligados ao histórico</h2><p class="help">Somente fatos confirmados nesta aplicação. Anular corrige informação equivocada; não representa devolução real.</p><ul id="history-events" class="record-list"></ul><div class="pagination"><span id="history-events-position"></span><div><button id="history-events-prev" class="secondary">Anteriores</button><button id="history-events-next" class="secondary">Próximos</button></div></div></section>
+</div></section>
+<dialog id="history-detail-dialog" aria-labelledby="history-detail-title"><div class="dialog-heading"><h2 id="history-detail-title">Origem histórica</h2><button class="icon-button" data-close="history-detail-dialog" aria-label="Fechar origem">×</button></div><p id="history-detail-text"></p><pre id="history-detail-evidence" class="history-evidence"></pre><button class="secondary" data-close="history-detail-dialog">Fechar origem</button></dialog>
+<dialog id="history-pay-dialog" aria-labelledby="history-pay-title"><div class="dialog-heading"><h2 id="history-pay-title">Registrar fato confirmado</h2><button class="icon-button" data-close="history-pay-dialog" aria-label="Fechar registro">×</button></div><p id="history-pay-context"></p><p class="info" id="history-pay-warning"></p>
+<form id="history-pay-form"><div class="form-grid"><label>Pagador<select name="payer_code" id="history-pay-payer"><option value="self">Eu</option><option value="parents">Pai/Mãe</option></select></label>
+<label id="history-pay-account-field">Conta usada<select name="account_id" id="history-pay-account"></select></label>
+<label>Data do pagamento ou recebimento<input name="occurred_on" type="date" required></label><label>Valor pago ou recebido (R$)<input name="amount" inputmode="decimal" required></label>
+<label class="full">Motivo / identificação do comprovante<textarea name="reason" required maxlength="1000" rows="2"></textarea></label></div>
+<p class="help">Se não houver conta disponível, cadastre uma conta sua em Cadastros. Este formulário registra um valor nesta parcela; pagamento parcial é permitido. Nenhuma data antiga será preenchida por suposição.</p>
+<p id="history-pay-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" class="secondary" data-close="history-pay-dialog">Voltar</button><button type="submit" class="primary">Confirmar fato efetivo</button></div></form></dialog>
+<dialog id="history-reverse-dialog" aria-labelledby="history-reverse-title"><div class="dialog-heading"><h2 id="history-reverse-title">Anular informação equivocada</h2><button class="icon-button" data-close="history-reverse-dialog" aria-label="Fechar anulação">×</button></div>
+<p class="info">Use somente se este registro foi informado por engano. Uma devolução real exige outro fato; não anule um pagamento verdadeiro para representar reembolso.</p>
+<form id="history-reverse-form"><label>Motivo<textarea name="reason" required maxlength="1000" rows="3"></textarea></label><p id="history-reverse-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button class="secondary" type="button" data-close="history-reverse-dialog">Voltar</button><button class="danger" type="submit">Anular informação</button></div></form></dialog>
