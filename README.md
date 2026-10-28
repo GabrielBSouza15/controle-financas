@@ -35,7 +35,7 @@ O mesmo código oferece dois pontos de partida independentes:
 | Vazia | Esquema atualizado, nenhuma linha de negócio e indicador de reinvestimento zerado | `python -m scripts.prepare_database empty --database data/empty.db` |
 | Exemplo | Banco novo com receitas, despesas, parcelas, categorias e previsões inteiramente fictícias | `python -m scripts.prepare_database demo --database data/demo.db` |
 
-Somente código e arquivos de texto são distribuídos. Os bancos SQLite são gerados localmente e ficam fora do Git. O preparador recusa arquivos existentes; ele não apaga bancos. Dados fictícios são criados do zero, sem copiar transações pessoais. [Cenário de exemplo](examples/README.md).
+O repositório distribui código, documentação e uma captura da aplicação com dados fictícios. Os bancos SQLite são gerados localmente e ficam fora do Git. O preparador recusa arquivos existentes; ele não apaga bancos. Dados fictícios são criados do zero, sem copiar transações pessoais. [Cenário de exemplo](examples/README.md).
 
 ## Instalação e execução
 
