@@ -4,6 +4,14 @@ Aplicação web local para praticar Python, SQL, APIs, interface web e testes po
 
 O Codex apoiou o desenvolvimento, a compreensão dos conceitos e a verificação do código. As regras e os exemplos podem ser explorados como material de estudo.
 
+## Prévia
+
+![Visão geral da aplicação local com receitas, despesas e projeções fictícias](docs/images/visao-geral.jpg)
+
+Captura da aplicação com dados inteiramente fictícios. Para experimentar, siga a instalação abaixo e escolha banco vazio ou de exemplo.
+
+[Orientações de uso](docs/USO.md) · [Organização técnica](docs/ARQUITETURA.md) · [Cenário fictício](examples/README.md)
+
 ## O que a aplicação permite explorar
 
 - Receitas, despesas, categorias e responsabilidades Eu e Pai/Mãe.
@@ -71,3 +79,12 @@ Os testes utilizam bancos temporários e dados de teste. [Arquitetura](docs/ARQU
 Projeto educacional para execução local, sem integração bancária, autenticação multiusuário ou hospedagem pública. O servidor permanece em `127.0.0.1`, com validação de origem e proteção CSRF. GitHub hospeda o código; não executa o backend Python como um site do GitHub Pages.
 
 Os rótulos de instituições e responsabilidades representam configurações didáticas. Funcionalidades de importação exigem análise e confirmação próprias; não é necessário importar planilhas para experimentar as duas modalidades.
+
+
+## Verificação automática
+
+O workflow executa os testes Python e JavaScript em Linux e Windows, com Python 3.12 e Node.js 24. A execução ocorre em alterações de `main`, pull requests e acionamentos manuais. Consulte o resultado em [GitHub Actions](https://github.com/GabrielBSouza15/controle-financas/actions/workflows/testes.yml).
+
+## Licença
+
+[MIT](LICENSE), para o conteúdo publicado neste repositório.
