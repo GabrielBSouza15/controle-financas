@@ -2,7 +2,7 @@
 from typing import Annotated,Literal
 from fastapi import APIRouter,Request
 from pydantic import Field,StrictInt,model_validator
-from .schemas import PositiveId,CivilInput,MonthInput,Reason,InputModel
+from .schemas import PositiveId,CivilInput,MonthInput,Reason,UNINFORMED_REASON,InputModel
 from .settlements import Key,PageLimit,PageOffset
 from app.services import history_operations
 
@@ -18,7 +18,7 @@ class HistoryOperationInput(InputModel):
     account_id:PositiveId|None=None
     target_month:MonthInput|None=None
     card_code:Literal["nubank","mercado_pago"]|None=None
-    reason:Reason
+    reason:Reason = UNINFORMED_REASON
     @model_validator(mode="after")
     def shape(self):
         k=self.kind

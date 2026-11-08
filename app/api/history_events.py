@@ -2,7 +2,7 @@
 from typing import Annotated,Literal
 from fastapi import APIRouter,Request
 from pydantic import Field,model_validator
-from .schemas import InputModel,PositiveId,CivilInput,Reason
+from .schemas import InputModel,PositiveId,CivilInput,Reason, UNINFORMED_REASON
 from .settlements import Key,Money,OperationInput,PageLimit,PageOffset,Kinds
 from app.services import history_events
 
@@ -17,7 +17,7 @@ class HistoryEventInput(InputModel):
  amount_cents:Money
  payer_code:Literal["self","parents"]|None=None
  account_id:PositiveId|None=None
- reason:Reason
+ reason:Reason = UNINFORMED_REASON
  allocations:Annotated[list[HistoryAllocationInput],Field(min_length=1,max_length=100)]
  @model_validator(mode="after")
  def validate_distribution(self):
