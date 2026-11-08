@@ -3,6 +3,7 @@
 - `app/domain`: dinheiro, parcelas, datas e regras financeiras puras.
 - `app/persistence`: modelos relacionais, transações e consultas SQLite/SQLAlchemy.
 - `app/services`: operações financeiras, projeções e backups.
+- `app/services/expense_pdf.py`: relatório mensal em memória com ReportLab, reutilizando as consultas financeiras e seus filtros.
 - `app/api`: validação das entradas, rotas FastAPI e proteção local.
 - `app/templates` e `app/static`: interface Jinja2, HTML, CSS, JavaScript e SVG.
 - `migrations`: criação e evolução do esquema via Alembic.
