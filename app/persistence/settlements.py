@@ -25,9 +25,11 @@ def operation_key_exists(session, key):
         for model in (Entry, EntryChange))
 
 
-def entry_has_settlement(session, identity):
-    from .models import EntryPaymentMark
-    if session.get(EntryPaymentMark, identity) is not None:
+def entry_has_settlement(session, identity, *, include_payment_mark=True):
+    from .models import EntryPaymentMark, BillPaymentMark
+    if session.scalar(select(BillPaymentMark.id).join(Obligation, Obligation.id == BillPaymentMark.obligation_id).where(Obligation.entry_id == identity).limit(1)) is not None:
+        return True
+    if include_payment_mark and session.get(EntryPaymentMark, identity) is not None:
         return True
     return session.scalar(select(InvoiceCreditAllocation.id).join(Obligation, Obligation.id == InvoiceCreditAllocation.obligation_id).where(Obligation.entry_id == identity).limit(1)) is not None or session.scalar(select(ObligationAdjustment.id).join(Obligation, Obligation.id == ObligationAdjustment.obligation_id).where(Obligation.entry_id == identity).limit(1)) is not None or session.scalar(select(SettlementAllocation.id).join(Obligation,
         Obligation.id == SettlementAllocation.obligation_id).where(Obligation.entry_id == identity).limit(1)) is not None
@@ -58,6 +60,9 @@ def allocation_totals(session, obligation_ids):
             .join(EntryPaymentMark, EntryPaymentMark.entry_id == Obligation.entry_id)
             .where(Obligation.id.in_(identities))):
         result[identity]["payment_cents"] += amount
+    from .models import BillPaymentMark
+    for mark in session.scalars(select(BillPaymentMark).where(BillPaymentMark.obligation_id.in_(identities))):
+        result[mark.obligation_id]["payment_cents"] += mark.amount_cents
     credits = obligation_credit_totals(session, identities)
     for identity in identities: result[identity]["credit_applied_cents"] = credits[identity]
     return result
