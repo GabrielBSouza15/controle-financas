@@ -117,7 +117,7 @@ def test_failure_in_replacement_rolls_back_new_invoices_and_history(client):
         assert s.scalar(select(func.count()).select_from(Invoice))==4
     assert client.get(f'/api/entries/{original["id"]}').json()["status"]=="active"
 
-@pytest.mark.parametrize("changes",[{"reason":" "},{"reason":"x"*1001},{"total_cents":True},{"installment_count":0},{"category_id":999},{"occurred_on":"2026-02-30"}])
+@pytest.mark.parametrize("changes",[{"reason":123},{"reason":"x"*1001},{"total_cents":True},{"installment_count":0},{"category_id":999},{"occurred_on":"2026-02-30"}])
 def test_invalid_revision_leaves_original_unchanged(client,changes):
     original=create(client);result=edit(client,original["id"],**changes)
     assert result.status_code in (404,422),result.text

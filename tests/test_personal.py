@@ -61,8 +61,11 @@ def test_flow_chronology_pagination_and_pending(client):
     entry(client,request_key="late",occurred_on="2026-10-20",payment_method="pix",card_id=None,total_cents=200)
     entry(client,request_key="early",occurred_on="2026-10-01",payment_method="pix",card_id=None,total_cents=100)
     result=client.get("/api/personal/flow?date_from=2026-10-01&date_to=2026-10-31&limit=1").json()
-    assert result["total"]==2 and result["items"][0]["amount_cents"]==100
+    assert result["total"]==2 and result["items"][0]["amount_cents"]==200
     assert result["items"][0]["payment_status"]=="Pendente"
+    next_page=client.get("/api/personal/flow?date_from=2026-10-01&date_to=2026-10-31&limit=1&offset=1").json()
+    assert next_page["items"][0]["amount_cents"]==100
+    assert next_page["items"][0]["date"] < result["items"][0]["date"]
 
 
 def test_subtract_is_exact_idempotent_and_cannot_overdraw(client):
@@ -75,6 +78,7 @@ def test_subtract_is_exact_idempotent_and_cannot_overdraw(client):
     assert client.get("/api/personal/reinvestment").json()==dict(amount_cents=9999,version=2)
     assert client.post("/api/personal/reinvestment",json=data|dict(request_key="old-mode",version=2,mode="replace")).status_code==422
     assert client.get("/api/settlements").json()["cash_out_cents"]==0
+
 
 
 def test_legacy_replace_receipt_replays_without_reapplying(client):
@@ -122,3 +126,24 @@ def test_personal_commands_after_startup_with_history(client, tmp_path, adopted)
             response=c.post(endpoint,json={})
             assert response.status_code==409
             assert response.json()["error"]["code"]=="history_candidate_restricted"
+
+
+
+@pytest.mark.parametrize("method,person,expected_month", [("pix",1,"2026-10"),("credit",1,"2026-11"),("credit",2,"2026-11")])
+def test_confirmed_forecast_remains_in_flow_in_its_reference_period(client, method, person, expected_month):
+    from test_recurrences import series, decide
+    rule=series(client,payment_method=method,card_id=client.card if method=="credit" else None,
+                responsible_id=person,start_on="2026-10-20",account_id=None)
+    response=decide(client,rule["id"],occurred_on="2026-10-20")
+    assert response.status_code==200,response.text
+    saved=response.json()["entry"]
+    result=client.get("/api/personal/flow",params={"date_from":expected_month+"-01","date_to":expected_month+"-30"}).json()
+    rows=[r for r in result["items"] if r.get("entry_id")==saved["id"]]
+    assert len(rows)==1
+    assert rows[0]["phase"]=="registered" and rows[0]["pending_cents"]==3000
+    assert rows[0]["date"].startswith(expected_month)
+    assert client.get("/api/settlements").json()["cash_out_cents"]==0
+
+    combined=client.get("/api/personal/flow",params={"date_from":"2026-10-01","date_to":"2026-11-30"}).json()
+    assert sum(r.get("entry_id")==saved["id"] for r in combined["items"])==1
+    assert not any(r.get("series_id")==rule["id"] and r.get("reference_month")=="2026-10-01" for r in combined["items"])

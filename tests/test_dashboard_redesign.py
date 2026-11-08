@@ -16,7 +16,7 @@ def test_top_categories_other_and_uncategorized_reconcile_every_origin(client):
     entry(client,request_key="none",total_cents=99,payment_method="pix",card_id=None)
     entry(client,request_key="parents",responsible_id=2,total_cents=999,payment_method="pix",card_id=None)
     before=counts(client)
-    for person in ("self","parents"):
+    for person in ("self","parents","all"):
         data=dashboard(client,responsible_code=person)
         rows=data["category_chart"]
         assert sum(r["total_cents"] for r in rows)==data["selected_budget"]["total_expense_cents"]

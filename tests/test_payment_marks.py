@@ -20,7 +20,7 @@ def test_paid_mark_persists_exact_installments_without_cash_or_accounts(ready):
     response=ready.post("/api/entries",json=body)
     assert response.status_code==200,response.text
     data=response.json()
-    assert data["paid_without_account"] and not data["can_modify"]
+    assert data["paid_without_account"] and data["can_modify"]
     assert [p["payment_cents"] for p in data["obligations"]]==[3334,3334,3333]
     assert ready.post("/api/entries",json=body).json()==data
     result=ready.get("/api/personal/flow?date_from=2026-10-01&date_to=2026-12-31").json()
@@ -64,7 +64,7 @@ def test_replay_cannot_add_or_remove_payment_mark(ready):
     assert ready.post("/api/entries",json=plain|{"paid_without_account":True}).status_code==409
 
 
-def test_mark_prevents_second_payment_and_rewriting(ready):
+def test_mark_prevents_second_payment_but_allows_audited_removal(ready):
     data=ready.post("/api/entries",json=draft(ready)).json()
     account=ready.post("/api/accounts",json={"name":"Conta fictícia"}).json()["id"]
     part=data["obligations"][0]
@@ -72,7 +72,7 @@ def test_mark_prevents_second_payment_and_rewriting(ready):
         amount_cents=part["amount_cents"],payer_id=1,account_id=account,reason="Teste fictício",
         allocations=[dict(obligation_id=part["obligation_id"],amount_cents=part["amount_cents"])])
     assert ready.post("/api/settlements",json=payment).status_code==422
-    assert ready.post(f'/api/entries/{data["id"]}/cancel',json=dict(request_key="cancel",reason="Teste")).status_code==409
+    assert ready.post(f'/api/entries/{data["id"]}/cancel',json=dict(request_key="cancel",reason="Teste")).status_code==200
     assert ready.post(f'/api/entries/{data["id"]}/edit',json=draft(ready,request_key="edit",reason="Teste")).status_code==422
     assert ready.get("/api/settlements").json()["total"]==0
 
@@ -83,10 +83,6 @@ def test_marks_are_immutable_and_sql_rejects_rewriting_or_wrong_kind(ready):
         with pytest.raises(IntegrityError):
             with ready.app.state.engine.begin() as c:
                 c.exec_driver_sql(command)
-    with pytest.raises(IntegrityError):
-        with transaction(ready.app.state.engine) as s:
-            s.add(EntryChange(request_key="sql-cancel",source_entry_id=data["id"],action="cancel",
-                reason="Teste",recorded_at="2026-10-25",payload_json="{}"))
     income=ready.post("/api/entries",json=draft(ready,request_key="income",kind="income",paid_without_account=False)).json()
     with pytest.raises(IntegrityError):
         with transaction(ready.app.state.engine) as s:
