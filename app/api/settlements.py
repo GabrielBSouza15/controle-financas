@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Path, Query, Request
 from pydantic import Field, StrictInt, StringConstraints, model_validator
 from app.services import settlements as service
-from .schemas import CivilInput, InputModel, PositiveId, Reason
+from .schemas import CivilInput, InputModel, PositiveId, Reason, UNINFORMED_REASON
 
 Key = Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=128)]
 Money = Annotated[StrictInt, Field(ge=1, le=service.MAX_WEB_INTEGER)]
@@ -26,7 +26,7 @@ class EventInput(InputModel):
     payer_id: PositiveId | None = None
     account_id: PositiveId | None = None
     invoice_id: PositiveId | None = None
-    reason: Reason
+    reason: Reason = UNINFORMED_REASON
     allocations: Annotated[list[AllocationInput], Field(max_length=100)] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -43,7 +43,7 @@ class EventInput(InputModel):
 
 class OperationInput(InputModel):
     request_key: Key
-    reason: Reason
+    reason: Reason = UNINFORMED_REASON
 
 
 class CreditInput(OperationInput):

@@ -3,7 +3,7 @@ import {createCardCharts} from "/static/outlook.js";
 import {createBudgetCharts} from "/static/budget_charts.js";
 import {widthPercent} from "/static/dashboard_chart.mjs";
 
-export function createDashboardView({api, dateText, localDate, showEntry, showInvoice, showOccurrence, showHistory, notify}) {
+export function createDashboardView({api, dateText, localDate, showEntry, showInvoice, showOccurrence, showHistory, showBill, notify}) {
   const $ = id => document.getElementById(id);
   const state = {sequence: 0, detailSequence: 0, month: null, responsible: "self", detail: null, offset: 0};
   const labels = {all_income:"Receitas previstas · Eu e Pai/Mãe",expense:"Despesas",income:"Receitas",result:"Sobra ou falta prevista",card_expense:"Despesas no cartão",all_cards:"Faturas previstas · todos os cartões",self_expense: "Despesas pessoais", self_income: "Receitas pessoais", self_result: "Sobra ou falta prevista", parents_expense: "Compromissos de Pai/Mãe", cash: "Dinheiro movimentado", card: "Fatura prevista", all_expense: "Despesas previstas · Eu e Pai/Mãe"};
@@ -23,9 +23,9 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
   function render(data) {
     if (!data.selected_budget || !data.selected_months) throw new Error("Para carregar a atualização, encerre a aplicação com Ctrl+C no terminal e abra novamente pelo ícone Controle de finanças.");
     const row = data.selected_budget; state.month = data.month.slice(0,7); state.responsible = data.responsible_code;
-    const person = state.responsible === "parents" ? "Pai/Mãe" : "Eu";
-    $("dashboard-expense-title").textContent = state.responsible === "parents" ? "Despesas previstas de Pai/Mãe" : "Minhas despesas previstas";
-    $("dashboard-income-title").textContent = state.responsible === "parents" ? "Receitas previstas de Pai/Mãe" : "Minhas receitas previstas";
+    const person = state.responsible === "all" ? "Todos" : state.responsible === "parents" ? "Pai/Mãe" : "Eu";
+    $("dashboard-expense-title").textContent = state.responsible === "all" ? "Despesas previstas de todos" : state.responsible === "parents" ? "Despesas previstas de Pai/Mãe" : "Minhas despesas previstas";
+    $("dashboard-income-title").textContent = state.responsible === "all" ? "Receitas previstas de todos" : state.responsible === "parents" ? "Receitas previstas de Pai/Mãe" : "Minhas receitas previstas";
     $("dashboard-chart-title").textContent = `Receitas e despesas previstas · ${person}`;
     $("dashboard-chart-person").textContent = person;
     $("dashboard-category-title").textContent = `Despesas por categoria · ${person}`;
@@ -34,13 +34,28 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
     $("dashboard-result").textContent = formatSignedCents(row.result_cents);
     $("dashboard-result").classList.toggle("money-expense", row.result_cents < 0);
     $("dashboard-result").classList.toggle("money-income", row.result_cents > 0);
-    $("dashboard-result-note").textContent = row.total_income_cents === 0 ? "Sem receitas cadastradas para este responsável no mês. Resultado dos registros; não é saldo bancário." : "Receitas menos despesas cadastradas. Não é saldo bancário.";
+    $("dashboard-result-note").textContent = row.total_income_cents === 0 ? "Sem receitas cadastradas para a seleção no mês. Resultado dos registros; não é saldo bancário." : "Receitas menos despesas cadastradas. Não é saldo bancário.";
     $("dashboard-cash").textContent = formatSignedCents(data.budget.cash_variation_cents);
     $("dashboard-expense-parts").textContent = split(row.registered_expense_cents, row.forecast_expense_cents);
     $("dashboard-income-parts").textContent = split(row.registered_income_cents, row.forecast_income_cents);
     $("dashboard-cash-parts").textContent = `${formatCents(data.budget.cash_in_cents)} de entradas · ${formatCents(data.budget.cash_out_cents)} de saídas efetivas. Sem saldo inicial.`;
     $("dashboard-empty").hidden = !data.empty;
     $("dashboard-range").textContent = `${monthText(data.months[0].month)} a ${monthText(data.months.at(-1).month)}`;
+    const tasks = data.pending_tasks;
+    $("dashboard-tasks-period").textContent = `${monthText(tasks.month_from)} a ${monthText(tasks.month_to)}`;
+    $("dashboard-tasks-count").textContent = `${tasks.count} ${tasks.count === 1 ? "item" : "itens"}`;
+    $("dashboard-tasks-empty").hidden = tasks.count > 0;
+    $("dashboard-tasks-table").hidden = tasks.count === 0;
+    $("dashboard-tasks-rows").replaceChildren();
+    for (const item of tasks.items) {
+      const tr = document.createElement("tr"), recurring = item.kind === "recurrence";
+      cell(tr, recurring ? dateText(item.scheduled_on) : monthText(item.reference_month));
+      cell(tr, recurring ? `${item.description} · ${item.responsible_code === "parents" ? "Pai/Mãe" : "Eu"}${item.card_name ? " · " + item.card_name : ""}` : item.card_name);
+      cell(tr, recurring ? (item.entry_kind === "income" ? "Receita prevista a confirmar" : "Despesa prevista a confirmar") : "Fatura com pagamento pendente");
+      cell(tr, formatCents(item.amount_cents), "number");
+      button(cell(tr, ""), recurring ? "Ver previsão" : "Registrar pagamento", () => recurring ? showOccurrence(item.series_id, item.reference_month.slice(0,7)) : showBill(item));
+      $("dashboard-tasks-rows").append(tr);
+    }
     budgetCharts.render(data);
     state.outlook = data.outlook;
     cardCharts.render(data.outlook);
@@ -60,7 +75,7 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
       const sub = document.createElement("small"); sub.textContent = split(category.registered_cents, category.forecast_cents);
       li.append(track, sub); $("dashboard-categories").append(li);
     }
-    if (!data.categories.length) {const li = document.createElement("li"); li.textContent = "Sem despesas deste responsável neste mês."; $("dashboard-categories").append(li);}
+    if (!data.categories.length) {const li = document.createElement("li"); li.textContent = "Sem despesas para a seleção neste mês."; $("dashboard-categories").append(li);}
     $("dashboard-invoices").replaceChildren();
     for (const invoice of data.invoices) {
       const tr = document.createElement("tr"), name = cell(tr, invoice.card_name);
@@ -96,7 +111,7 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
     $("dashboard-loading").hidden = false; $("dashboard-content").hidden = true; $("dashboard-error").hidden = true;
     try {
       const params = new URLSearchParams(new FormData($("dashboard-filters")));
-      if ($("outlook-card-filter").value) params.set("chart_card_id", $("outlook-card-filter").value);
+      if ($("outlook-card-filter").value) params.set("card_responsible_code", $("outlook-card-filter").value);
       const data = await api(`/dashboard?${params}`);
       if (sequence !== state.sequence) return;
       render(data); $("dashboard-content").hidden = false;
@@ -107,12 +122,14 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
     const comparison = ["card", "all_cards", "card_expense", "all_expense", "all_income"].includes(metric);
     const person = metric === "cash" ? "self" : metric === "parents_expense" ? "parents" : state.responsible;
     state.detail = {metric, month, ...(!comparison ? {responsible_code: person} : {}), ...filters}; state.offset = 0;
-    $("dashboard-detail-title").textContent = `${labels[metric]}${!comparison ? " · " + (person === "parents" ? "Pai/Mãe" : "Eu") : ""}${categoryName ? " · " + categoryName : ""} · ${monthText(month)}`;
+    $("dashboard-detail-title").textContent = `${metric === "card" && filters.responsible_code && filters.responsible_code !== "all" ? "Parte prevista do cartão" : labels[metric]}${!comparison ? " · " + (person === "all" ? "Todos" : person === "parents" ? "Pai/Mãe" : "Eu") : ""}${categoryName ? " · " + categoryName : ""} · ${monthText(month)}`;
     if (!$("dashboard-detail-dialog").open) $("dashboard-detail-dialog").showModal();
+    $("dashboard-export-pdf").hidden = !["expense", "self_expense", "parents_expense"].includes(metric);
     await loadDetails();
   }
   async function loadDetails() {
     const sequence = ++state.detailSequence;
+    $("dashboard-export-pdf").disabled = true;
     $("dashboard-detail-rows").replaceChildren(); $("dashboard-detail-error").hidden = true;
     $("dashboard-detail-total").textContent = "Buscando os detalhes…"; $("dashboard-detail-empty").hidden = true;
     $("dashboard-detail-previous").disabled = true; $("dashboard-detail-next").disabled = true;
@@ -121,9 +138,10 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
       const path = ["card", "all_cards", "card_expense", "all_expense", "all_income"].includes(state.detail.metric) ? "/dashboard/outlook/details" : "/dashboard/details";
       const data = await api(`${path}?${params}`);
       if (sequence !== state.detailSequence) return;
+      $("dashboard-export-pdf").disabled = false;
       const cash = data.metric === "cash";
       $("dashboard-detail-total").textContent = `${formatSignedCents(data.total_cents)} · soma de ${data.total} item(ns), em todas as páginas.`;
-      $("dashboard-detail-note").textContent = cash ? "Entradas positivas, saídas negativas. Transferências aparecem nas duas contas e somam zero. Repasses não são receita pessoal. Esta composição não inclui saldo inicial." : ["card","all_cards"].includes(data.metric) ? "Total previsto da fatura, com Eu e Pai/Mãe, histórico e estimativas. Créditos entre faturas alteram a cobrança. Pagamentos não diminuem este total; consulte o restante a pagar em Cartões e faturas." : data.metric === "card_expense" ? "Despesas do cartão selecionado, com Eu e Pai/Mãe. Créditos entre faturas mudam a cobrança, sem reduzir a despesa novamente." : data.metric === "all_income" ? "Receitas lançadas e estimativas de Eu e Pai/Mãe, em todos os meios. Estimativa não confirma recebimento; repasses não são receitas pessoais." : data.metric === "all_expense" ? "Despesas de Eu e Pai/Mãe em todos os meios de pagamento. No cartão, vale o mês da fatura. Estimativas ainda podem mudar. Pagar uma fatura não cria outra despesa." : "Valores por parcela/mês da fatura, já com ajustes. Estimativa não é pagamento. Para resultado, despesas contribuem com sinal negativo; receitas com sinal positivo.";
+      $("dashboard-detail-note").textContent = cash ? "Entradas positivas, saídas negativas. Transferências aparecem nas duas contas e somam zero. Repasses não são receita pessoal. Esta composição não inclui saldo inicial." : ["card","all_cards"].includes(data.metric) ? data.responsible_code && data.responsible_code !== "all" ? "Parte prevista do responsável selecionado, com histórico e estimativas. Créditos entre faturas pertencem à cobrança completa e não são atribuídos ao responsável. Não é o total cobrado pelo banco." : "Total previsto da fatura, com Eu e Pai/Mãe, histórico e estimativas. Créditos entre faturas alteram a cobrança. Pagamentos não diminuem este total; consulte o restante a pagar em Cartões e faturas." : data.metric === "card_expense" ? "Despesas do cartão selecionado, com Eu e Pai/Mãe. Créditos entre faturas mudam a cobrança, sem reduzir a despesa novamente." : data.metric === "all_income" ? "Receitas lançadas e estimativas de Eu e Pai/Mãe, em todos os meios. Estimativa não confirma recebimento; repasses não são receitas pessoais." : data.metric === "all_expense" ? "Despesas de Eu e Pai/Mãe em todos os meios de pagamento. No cartão, vale o mês da fatura. Estimativas ainda podem mudar. Pagar uma fatura não cria outra despesa." : "Valores por parcela/mês da fatura, já com ajustes. Estimativa não é pagamento. Para resultado, despesas contribuem com sinal negativo; receitas com sinal positivo.";
       for (const item of data.items) {
         const tr = document.createElement("tr");
         const name = cell(tr, cash ? item.reason : item.description || "Descrição ausente");
@@ -134,7 +152,7 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
           timing.textContent=item.parents_repayment === "pending" ? "Repasse pendente: orçamento no mês seguinte à despesa." : "Repasse informado como recebido; caixa registrado separadamente.";
           name.append(timing);
         }
-        cell(tr, item.source === "statement_credit" ? "Crédito entre faturas" : cash ? (kinds[item.kind]||("Histórico: "+(kinds[item.source_kind]||item.kind.replace("history_","")))) : item.phase === "forecast" ? "Estimativa mensal" + (item.responsible_code === "parents" ? " · Pai/Mãe" : " · Eu") : item.source === "history" ? `Planilha · linha ${item.source_row} · ${item.responsible_code === "parents" ? "Pai/Mãe" : "Eu"}` : "Novo lançamento" + (item.responsible_code === "parents" ? " · Pai/Mãe" : " · Eu"));
+        cell(tr, item.source === "statement_credit" ? "Crédito entre faturas" : cash ? (kinds[item.kind]||("Histórico: "+(kinds[item.source_kind]||item.kind.replace("history_","")))) : item.phase === "forecast" ? "Estimativa mensal" + (item.responsible_code === "parents" ? " · Pai/Mãe" : " · Eu") : item.source === "history" ? `Planilha · ${item.responsible_code === "parents" ? "Pai/Mãe" : "Eu"}` : "Novo lançamento" + (item.responsible_code === "parents" ? " · Pai/Mãe" : " · Eu"));
         cell(tr, formatSignedCents(item.contribution_cents), "number"); const actions = cell(tr, "");
         if (item.invoice_id && item.source === "statement_credit") button(actions, "Ver fatura", () => { $("dashboard-detail-dialog").close(); return showInvoice(item.invoice_id); });
         else if (item.entry_id) button(actions, "Ver lançamento", () => {$("dashboard-detail-dialog").close(); return showEntry(item.entry_id);});
@@ -147,6 +165,32 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
       $("dashboard-detail-previous").disabled = state.offset === 0; $("dashboard-detail-next").disabled = state.offset + 50 >= data.total;
     } catch (error) {if (sequence === state.detailSequence) {$("dashboard-detail-total").textContent = "Consulta não concluída."; $("dashboard-detail-error").textContent = error.message; $("dashboard-detail-error").hidden = false;}}
   }
+  $("dashboard-export-pdf").addEventListener("click", async () => {
+    const button = $("dashboard-export-pdf");
+    const detail = {...state.detail};
+    if (!["expense", "self_expense", "parents_expense"].includes(detail.metric)) return;
+    delete detail.metric;
+    const params = new URLSearchParams(detail);
+    button.disabled = true;
+    $("dashboard-detail-error").hidden = true;
+    try {
+      const response = await fetch(`/api/dashboard/expenses.pdf?${params}`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.error?.message || "Não foi possível exportar o PDF.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `despesas-${detail.month}-${detail.responsible_code || "self"}.pdf`;
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      $("dashboard-detail-error").textContent = error.message;
+      $("dashboard-detail-error").hidden = false;
+    } finally { button.disabled = false; }
+  });
   const filters = $("dashboard-filters");
   const preferenceKey = "finance-dashboard-filters";
   const validMonth = value => typeof value === "string" && /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(value);
@@ -156,7 +200,7 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
     const saved = JSON.parse(localStorage.getItem(preferenceKey));
     if (validMonth(saved?.month)) filters.elements.month.value = saved.month;
     if (validMonths(saved?.months)) filters.elements.months.value = saved.months;
-    if (["self", "parents"].includes(saved?.responsible_code)) filters.elements.responsible_code.value = saved.responsible_code;
+    if (["self", "parents", "all"].includes(saved?.responsible_code)) filters.elements.responsible_code.value = saved.responsible_code;
   } catch {} // Armazenamento bloqueado ou inválido não impede abrir o painel.
   function rememberFilters() {
     const month = filters.elements.month.value, months = filters.elements.months.value;

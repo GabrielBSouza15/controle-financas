@@ -116,7 +116,7 @@ def test_noncredit_settlements(client,kind,entry_kind,payer,account,direction):
     detail=client.get(f'/api/entries/{original["id"]}').json()
     assert detail["obligations"][0]["payment_cents"]==150000 and not detail["can_modify"]
 
-@pytest.mark.parametrize("change",[{"amount_cents":True},{"amount_cents":1.5},{"amount_cents":"100"},{"amount_cents":-1},{"amount_cents":2**53},{"occurred_on":"9999-01-01"},{"occurred_on":"2026-10-05T00:00:00"},{"reason":" "},{"extra":"no"},{"account_id":None},{"payer_id":2},{"invoice_id":999}])
+@pytest.mark.parametrize("change",[{"amount_cents":True},{"amount_cents":1.5},{"amount_cents":"100"},{"amount_cents":-1},{"amount_cents":2**53},{"occurred_on":"9999-01-01"},{"occurred_on":"2026-10-05T00:00:00"},{"extra":"no"},{"account_id":None},{"payer_id":2},{"invoice_id":999}])
 def test_invalid_events_have_no_cash_or_allocation(client,change):
     original=entry(client)
     result=client.post("/api/settlements",json=event(client,allocations=allocations(original))|change)

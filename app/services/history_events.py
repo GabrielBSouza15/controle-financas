@@ -19,6 +19,10 @@ def totals(session):
   row=result[link["record_id"]];amount=link["remaining_cents"]
   if link["event_kind"]!="repayment":row["new_payment_cents"]+=amount
   if link["event_kind"]=="repayment" or link["payer_code"]=="parents":row["known_parents_covered_cents"]+=amount
+ from app.persistence.models import BillPaymentMark
+ for mark in session.scalars(select(BillPaymentMark).where(BillPaymentMark.record_id.is_not(None))):
+  result[mark.record_id]["new_payment_cents"]+=mark.amount_cents
+  result[mark.record_id]["bill_payment_without_account"]={"amount_cents":mark.amount_cents,"occurred_on":mark.occurred_on.isoformat()}
  return result
 
 def position(row,usage):

@@ -127,3 +127,45 @@ def test_historical_income_is_in_column_once_without_fabricating_receipt(client)
     assert data["outlook"]["months"][0]["income_totals"]["total_cents"]==result["total_cents"]==30000
     assert len(result["items"])==1 and result["items"][0]["source"]=="history"
     assert data["budget"]["cash_in_cents"]==0
+
+
+@pytest.mark.parametrize("person",["all","self","parents"])
+def test_bank_comparison_responsible_filter_matches_details_and_preserves_budget(client,person):
+    second=next(c["id"] for c in client.catalogs["cards"] if c["id"]!=client.card)
+    for index,(cid,who,value) in enumerate([(client.card,1,1100),(client.card,2,2200),(second,1,3300),(second,2,4400)]):
+        entry(client,request_key=f"bank-{index}",card_id=cid,responsible_id=who,total_cents=value)
+    series(client,payment_method="credit",card_id=client.card,account_id=None,amount_cents=500,responsible_id=2)
+    before=counts(client)
+    full=dashboard(client)
+    filtered=dashboard(client,card_responsible_code=person)
+    assert filtered["outlook"]["selected_responsible_code"]==person
+    assert len(filtered["outlook"]["cards"])==2
+    for field in ["selected_budget","selected_months","categories","pending_tasks"]:
+        assert filtered[field]==full[field]
+    for row in filtered["outlook"]["months"]:
+        for card in row["cards"]:
+            plot=card["selected_plot"]
+            expected=card["total_cents"] if person=="all" else card[person+"_cents"]
+            assert plot["total_cents"]==expected
+            assert card["selected_registered_cents"]+card["selected_forecast_cents"]==expected
+            data=details(client,row["month"][:7],"card",card_id=card["card_id"],responsible_code=person,limit=1)
+            assert data["total_cents"]==expected
+            assert all(i["responsible_code"]==person for i in data["items"]) if person!="all" else True
+    assert counts(client)==before
+
+
+def test_personal_parts_never_receive_invoice_credit(client):
+    source,payment,target=scenario(client)
+    assert apply(client,source,target).status_code==200
+    for person in ("all","self","parents"):
+        data=dashboard(client,card_responsible_code=person)
+        for row in data["outlook"]["months"][:2]:
+            card=next(c for c in row["cards"] if c["card_id"]==client.card)
+            detail=details(client,row["month"][:7],"card",card_id=client.card,responsible_code=person)
+            assert detail["total_cents"]==card["selected_plot"]["total_cents"]
+            if person!="all":
+                assert card["selected_credits_cents"]==0
+                assert not any(i["kind"]=="statement_credit" for i in detail["items"])
+                assert card["selected_plot"]["total_cents"]==card[person+"_cents"]
+            else:
+                assert card["selected_credits_cents"]==card["credits_cents"]

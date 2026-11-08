@@ -17,7 +17,7 @@
 </form>
 <p id="history-error" class="form-error" role="alert" hidden></p>
 <section class="panel"><div class="section-heading"><h2>Parcelas e origem</h2><span id="history-count" class="muted"></span></div>
-<div class="table-wrap"><table><thead><tr><th>Origem / referência</th><th>Descrição / responsável</th><th>Parcela original</th><th class="number">Valor</th><th>Situação registrada</th><th>Ações</th></tr></thead><tbody id="history-rows"></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>Data de referência</th><th>Descrição / responsável</th><th>Parcela original</th><th class="number">Valor</th><th>Situação registrada</th><th>Ações</th></tr></thead><tbody id="history-rows"></tbody></table></div>
 <p id="history-records-empty" class="help" hidden>Nenhum registro neste filtro.</p>
 <footer class="pagination"><span id="history-position"></span><div><button id="history-prev" class="secondary">Anterior</button><button id="history-next" class="secondary">Próxima</button></div></footer></section>
 <section class="panel"><h2>Cartões por ciclo simulado</h2><p class="help">O total é o compromisso observado. Pago antigo, novos pagamentos e pendência são apresentados separadamente. Liberar um vínculo não desfaz o pagamento ao banco: reaplique o crédito disponível. A conferência compara o total com o documento do emissor.</p>
@@ -29,9 +29,9 @@
 <form id="history-pay-form"><div class="form-grid"><label>Pagador<select name="payer_code" id="history-pay-payer"><option value="self">Eu</option><option value="parents">Pai/Mãe</option></select></label>
 <label id="history-pay-account-field">Conta usada<select name="account_id" id="history-pay-account"></select></label>
 <label>Data do pagamento ou recebimento<input name="occurred_on" type="date" required></label><label>Valor pago ou recebido (R$)<input name="amount" inputmode="decimal" required></label>
-<label class="full">Motivo / identificação do comprovante<textarea name="reason" required maxlength="1000" rows="2"></textarea></label></div>
+<label class="full">Motivo / identificação do comprovante (opcional)<textarea name="reason" maxlength="1000" rows="2"></textarea></label></div>
 <p class="help">Se não houver conta disponível, cadastre uma conta sua em Cadastros. Este formulário registra um valor nesta parcela; pagamento parcial é permitido. Nenhuma data antiga será preenchida por suposição.</p>
 <p id="history-pay-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" class="secondary" data-close="history-pay-dialog">Voltar</button><button type="submit" class="primary">Confirmar fato efetivo</button></div></form></dialog>
 <dialog id="history-reverse-dialog" aria-labelledby="history-reverse-title"><div class="dialog-heading"><h2 id="history-reverse-title">Anular informação equivocada</h2><button class="icon-button" data-close="history-reverse-dialog" aria-label="Fechar anulação">×</button></div>
 <p class="info">Use somente se este registro foi informado por engano. Uma devolução real exige outro fato; não anule um pagamento verdadeiro para representar reembolso.</p>
-<form id="history-reverse-form"><label>Motivo<textarea name="reason" required maxlength="1000" rows="3"></textarea></label><p id="history-reverse-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button class="secondary" type="button" data-close="history-reverse-dialog">Voltar</button><button class="danger" type="submit">Anular informação</button></div></form></dialog>
+<form id="history-reverse-form"><label>Motivo (opcional)<textarea name="reason" maxlength="1000" rows="3"></textarea></label><p id="history-reverse-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button class="secondary" type="button" data-close="history-reverse-dialog">Voltar</button><button class="danger" type="submit">Anular informação</button></div></form></dialog>

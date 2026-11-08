@@ -22,7 +22,7 @@ export function createHistoryView({api,notify,dateText,localDate,refreshAll}){
    $("history-opening").textContent=sum.opening_balances.length?"Abertura confirmada: "+sum.opening_balances.map(r=>formatCents(r.amount_cents)+" em "+dateText(r.reference_on)).join("; ")+". O caixa antigo está incompleto; não há saldo bancário atual calculado.":"Sem abertura confirmada; valores de caixa são variações registradas.";
    $("history-rows").replaceChildren();
    for(const item of data.items){
-    const tr=document.createElement("tr");cell(tr,"Linha "+item.source_row+" · "+dateText(item.reference_on));cell(tr,(item.description||"Descrição ausente")+" · "+(item.responsible_code==="self"?"Eu":"Pai/Mãe"));
+    const tr=document.createElement("tr");cell(tr,dateText(item.reference_on));cell(tr,(item.description||"Descrição ausente")+" · "+(item.responsible_code==="self"?"Eu":"Pai/Mãe"));
     cell(tr,item.observed_number+"/"+item.observed_count);cell(tr,formatCents(item.effective_amount_cents)+(item.effective_amount_cents!==item.amount_cents?" · original "+formatCents(item.amount_cents):""));
     cell(tr,(item.role==="opening_balance"?"Saldo inicial":item.role==="excluded"?"Duplicidade excluída":statuses[item.payment_state]||item.payment_state)+(item.pending_cents>0?" · falta "+formatCents(item.pending_cents):""));
     const actions=cell(tr,"");button(actions,"Ver origem",()=>detail(item.id));
@@ -54,7 +54,7 @@ export function createHistoryView({api,notify,dateText,localDate,refreshAll}){
    await operations.refresh();
   }catch(e){if(sequence===state.sequence){$("history-error").textContent=e.message;$("history-error").hidden=false;}}
  }
- async function detail(id){const item=await api("/history/records/"+id);$("history-detail-title").textContent="Linha "+item.source_row+" · "+(item.description||"Descrição ausente");$("history-detail-text").textContent="Parcela "+item.observed_number+"/"+item.observed_count+". "+statuses[item.payment_state]+". Grupo: "+({confirmed:"vínculo confirmado",candidate:"candidato a agrupamento",unmapped:"sem compra agrupada"}[item.group_state])+". Repasse anterior: "+(item.responsible_code==="parents"?"desconhecido":"não se aplica")+". Novos valores cobertos de Pai/Mãe: "+formatCents(item.known_parents_covered_cents);$("history-detail-evidence").textContent=JSON.stringify({origem:item.evidence,novos_registros:item.new_events,correcoes:item.operations},null,2);$("history-detail-dialog").showModal();}
+ async function detail(id){const item=await api("/history/records/"+id);$("history-detail-title").textContent=(item.description||"Descrição ausente");$("history-detail-text").textContent="Parcela "+item.observed_number+"/"+item.observed_count+". "+statuses[item.payment_state]+". Grupo: "+({confirmed:"vínculo confirmado",candidate:"candidato a agrupamento",unmapped:"sem compra agrupada"}[item.group_state])+". Repasse anterior: "+(item.responsible_code==="parents"?"desconhecido":"não se aplica")+". Novos valores cobertos de Pai/Mãe: "+formatCents(item.known_parents_covered_cents);if(item.bill_payment_without_account) $("history-detail-text").textContent+=". Pago sem conta: "+formatCents(item.bill_payment_without_account.amount_cents)+" em "+dateText(item.bill_payment_without_account.occurred_on);$("history-detail-evidence").textContent=JSON.stringify({origem:{descricao:item.description,data:item.reference_on,valor_centavos:item.amount_cents,categoria:item.category_original,pago_na_planilha:item.paid_evidence,parcela:item.observed_number,quantidade_declarada:item.observed_count},pagamento_sem_conta:item.bill_payment_without_account,novos_registros:item.new_events,correcoes:item.operations},null,2);$("history-detail-dialog").showModal();}
  function eventDetail(event){$("history-detail-title").textContent="Registro histórico "+event.id;$("history-detail-text").textContent=kinds[event.kind]+" · "+dateText(event.occurred_on)+". "+event.reason;$("history-detail-evidence").textContent=JSON.stringify(event,null,2);$("history-detail-dialog").showModal();}
  function payerChanged(){
   const f=$("history-pay-form"),direct=state.kind!=="repayment"&&state.kind!=="income_receipt"&&f.elements.payer_code.value==="parents";
@@ -69,7 +69,7 @@ export function createHistoryView({api,notify,dateText,localDate,refreshAll}){
   f.elements.amount.value=plainCents(repay?Math.max(0,row.effective_amount_cents-row.known_parents_covered_cents):row.pending_cents);
   $("history-pay-account").replaceChildren(new Option("Selecione uma conta sua",""));
   for(const account of state.catalogs.accounts)$("history-pay-account").add(new Option(account.name,String(account.id)));
-  $("history-pay-title").textContent=kinds[state.kind];$("history-pay-context").textContent="Linha "+row.source_row+" · "+(row.description||"Descrição ausente")+" · parcela "+row.observed_number+"/"+row.observed_count;
+  $("history-pay-title").textContent=kinds[state.kind];$("history-pay-context").textContent=(row.description||"Descrição ausente")+" · parcela "+row.observed_number+"/"+row.observed_count;
   $("history-pay-error").hidden=true;payerChanged();$("history-pay-dialog").showModal();
  }
  function openReverse(event){state.reverseId=event.id;state.reverseKey=crypto.randomUUID();$("history-reverse-form").reset();$("history-reverse-error").hidden=true;$("history-reverse-dialog").showModal();}

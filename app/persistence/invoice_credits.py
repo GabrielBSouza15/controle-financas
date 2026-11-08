@@ -24,6 +24,9 @@ def invoice_bank_totals(session,invoice_ids):
         used,refunded=event_usage(session,event.id)
         result[event.invoice_id]["paid_cents"]+=event.amount_cents-refunded
         result[event.invoice_id]["unallocated_cents"]+=event.amount_cents-used
+    from .models import BillPaymentMark, Obligation
+    for invoice_id, amount in session.execute(select(Obligation.invoice_id, BillPaymentMark.amount_cents).join(BillPaymentMark, BillPaymentMark.obligation_id == Obligation.id).where(Obligation.invoice_id.in_(result))):
+        result[invoice_id]["paid_cents"] += amount
     return result
 
 def obligation_credit_totals(session,identities):

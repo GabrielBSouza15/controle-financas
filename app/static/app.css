@@ -337,3 +337,8 @@ fieldset.form-grid{border:0;padding:0;margin:0}
 .finance-column[data-value-kind="expense"] .finance-value{fill:var(--chart-expense)}
 
 #flow-rows td:nth-child(5),#flow-rows td:nth-child(6){white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
+
+/* Banco identifica a cor; o listrado continua identificando estimativas. */
+:root{--chart-nubank:#c084fc;--chart-mercado:#38bdf8}
+:root[data-theme="light"]{--chart-nubank:#820ad1;--chart-mercado:#007f9e}
+.swatch-nubank{background:var(--chart-nubank)}.swatch-mercado{background:var(--chart-mercado)}

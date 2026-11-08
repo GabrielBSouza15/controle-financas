@@ -66,7 +66,7 @@ const invoiceView = createInvoiceView({api, onWholePayment:row=>personalView.ope
   onClose:invoice=>settlementView.openClosure(invoice)});
 
 const dashboardView = createDashboardView({api,notify,dateText,localDate,showEntry:showDetails,
-  showInvoice:id=>invoiceView.open(id),showHistory:id=>historyView.open(id),showOccurrence:(id,month)=>recurrenceView.openOccurrences(id,month)});
+  showInvoice:id=>invoiceView.open(id),showHistory:id=>historyView.open(id),showOccurrence:(id,month)=>recurrenceView.openOccurrences(id,month),showBill:row=>personalView.openBill(row)});
 
 const personalView=createPersonalView({api,localDate,dateText,notify,refreshAll:refreshFinancialViews,showEntry:showDetails,showHistory:id=>historyView.open(id),showOccurrence:(id,month)=>recurrenceView.openOccurrences(id,month)});
 
@@ -143,6 +143,17 @@ async function loadEntries() {
     const action = cell(row, ""); const button = document.createElement("button"); button.className = "link-button"; button.textContent = "Detalhes";
     button.setAttribute("aria-label", `Detalhes de ${entry.description || "lançamento"}`);
     button.addEventListener("click", () => showDetails(entry.id).catch(e => notify(e.message, true))); action.append(button);
+    if (entry.can_modify) {
+      for (const [label, target] of [["Editar", "edit-entry"], ["Remover", "cancel-entry"]]) {
+        const shortcut = document.createElement("button"); shortcut.className = "link-button";
+        shortcut.textContent = label; shortcut.setAttribute("aria-label", `${label} ${entry.description || "lançamento"}`);
+        shortcut.addEventListener("click", async () => {
+          try { await showDetails(entry.id); if (state.details.can_modify) $(target).click(); }
+          catch (error) { notify(error.message, true); }
+        });
+        action.append(shortcut);
+      }
+    }
     $("entry-rows").append(row);
   }
   $("result-count").textContent = `${data.total} registro${data.total === 1 ? "" : "s"}`;
@@ -171,6 +182,7 @@ async function showDetails(id) {
     }
     cell(row, dateText(part.closing_date));
     cell(row, part.invoice_id ? part.invoice_status === "closed" ? "Fechada" : "Aberta" : "Sem fatura"); const settlement = cell(row, part.payment_cents ? `${entry.payment_method === "credit" ? "Ao emissor" : entry.kind === "income" ? "Recebido" : "Pago"}: ${formatCents(part.payment_cents)}` : "Sem liquidação registrada");
+    if(part.bill_payment_without_account) settlement.textContent+=` · Sem conta: ${formatCents(part.bill_payment_without_account.amount_cents)} em ${dateText(part.bill_payment_without_account.occurred_on)}`;
     if(part.credit_applied_cents) settlement.textContent+=` · Crédito compensado: ${formatCents(part.credit_applied_cents)}`;
     if(entry.paid_without_account) settlement.textContent+=` · Em ${dateText(entry.occurred_on)}, sem conta bancária vinculada`;
     if (part.parents_covered_cents) {const coverage = document.createElement("small"); coverage.textContent = `Cobertura do grupo: ${formatCents(part.parents_covered_cents)}`; settlement.append(coverage);}
@@ -187,7 +199,7 @@ async function showDetails(id) {
     $("history-list").append(li);
   }
   $("edit-entry").hidden = !entry.can_modify; $("cancel-entry").hidden = !entry.can_modify;
-  $("modification-note").textContent = entry.can_modify ? "Você pode revisar este compromisso; o motivo e a versão anterior ficarão registrados." : entry.status !== "active" ? "Este registro pertence ao histórico. Consulte a versão ativa, se houver, para fazer alterações." : entry.has_settlement_links ? "Este compromisso possui vínculos financeiros e não pode ser reescrito, mesmo após anulação de um registro. Preserve o histórico ao corrigir." : "Alterações bloqueadas: há parcela em fatura consolidada. A correção precisa de um ajuste específico.";
+  $("modification-note").textContent = entry.can_modify ? (entry.paid_without_account ? "Você pode editar ou remover este cadastro pago sem conta. A versão anterior e sua indicação de pagamento serão preservadas. A edição mantém Pago para despesa de Eu via PIX/Débito sem conta; outro tipo ou responsável não confirma pagamento. Remover retira dos totais ativos, sem registrar devolução." : "Você pode editar ou remover este compromisso; a versão anterior ficará registrada e o motivo é opcional.") : entry.status !== "active" ? "Este registro pertence ao histórico. Consulte a versão ativa, se houver, para fazer alterações." : entry.has_settlement_links ? "Este compromisso possui vínculos financeiros e não pode ser reescrito, mesmo após anulação de um registro. Preserve o histórico ao corrigir." : "Alterações bloqueadas: há parcela em fatura consolidada. A correção precisa de um ajuste específico.";
   $("settle-entry").hidden = entry.status !== "active" || entry.payment_method === "credit" || !entry.obligations.some(part=>part.payment_cents < part.amount_cents);
   $("settle-entry").textContent = entry.kind === "income" ? "Registrar recebimento" : "Registrar pagamento da despesa";
   if (!$("details-dialog").open) $("details-dialog").showModal();
@@ -211,7 +223,7 @@ function updateMethod() {
     : "Define somente o mês do orçamento. Registre a entrada real de dinheiro separadamente nos detalhes da origem.";
 }
 function newEntry() {
-  $("entry-form").reset(); state.historyMatches = null; $("history-overlap").hidden = true; state.editing = null; $("entry-title").textContent = "Adicionar receita ou despesa";
+  $("entry-form").reset(); $("entry-edit-help").hidden = true; state.historyMatches = null; $("history-overlap").hidden = true; state.editing = null; $("entry-title").textContent = "Adicionar receita ou despesa";
   $("edit-reason-field").hidden = true; $("entry-form").elements.reason.disabled = true; $("entry-form").elements.reason.required = false;
   state.key = crypto.randomUUID(); $("entry-form").elements.occurred_on.value = localDate();
   $("entry-error").hidden = true; updateMethod(); $("entry-dialog").showModal();
@@ -253,7 +265,7 @@ $("entry-form").addEventListener("submit", async e => {
       if (error.code === "history_overlap") {
         state.historyMatches = error.matches; $("history-overlap").hidden = false; $("history-distinct").checked = false;
         $("history-overlap-items").replaceChildren();
-        for (const item of error.matches) { const li = document.createElement("li"); li.textContent = `Linha ${item.source_row}: ${item.description} · ${formatCents(item.amount_cents)} · ${dateText(item.reference_on)}`; $("history-overlap-items").append(li); }
+        for (const item of error.matches) { const li = document.createElement("li"); li.textContent = `${item.description} · ${formatCents(item.amount_cents)} · ${dateText(item.reference_on)}`; $("history-overlap-items").append(li); }
       }
       $("entry-error").textContent = error.message; $("entry-error").hidden = false;
     }
@@ -282,13 +294,15 @@ $("edit-entry").addEventListener("click", () => {
   $("entry-repayment").value = entry.parents_repayment || "";
   $("entry-category").value = entry.category_name || "";
   const cents = BigInt(entry.total_cents); form.elements.amount.value = `${cents/100n},${String(cents%100n).padStart(2,"0")}`;
-  $("edit-reason-field").hidden = false; form.elements.reason.disabled = false; form.elements.reason.required = true;
+  $("edit-reason-field").hidden = false; form.elements.reason.disabled = false; form.elements.reason.required = false;
+  $("entry-edit-help").hidden = !entry.paid_without_account;
   updateMethod();
 });
 $("cancel-entry").addEventListener("click", () => {
   state.cancelSource = state.details.id; state.cancelKey = crypto.randomUUID();
   $("cancel-form").reset(); $("cancel-error").hidden = true;
   $("cancel-description").textContent = `${state.details.description} · ${formatCents(state.details.total_cents)}`;
+  $("cancel-payment-note").hidden = !state.details.paid_without_account;
   $("details-dialog").close(); $("cancel-dialog").showModal();
 });
 $("cancel-form").addEventListener("submit", async event => {

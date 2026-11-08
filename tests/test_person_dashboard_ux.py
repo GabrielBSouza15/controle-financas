@@ -41,6 +41,27 @@ def test_selected_responsible_reconciles_history_registered_forecast_and_income(
     assert sum(item["total_cents"] for item in parents["categories"])==14000
     assert detail(client,"expense",category_id=category)["total_cents"]==7000
     assert parents["selected_months"][0]==row
+    combined=overview(client,"all")
+    assert combined["responsible_code"]=="all"
+    for own_month,parent_month,all_month in zip(own["selected_months"],parents["selected_months"],combined["selected_months"]):
+        for field in own_month:
+            if field!="month":
+                assert all_month[field]==own_month[field]+parent_month[field]
+    assert combined["budget"]==own["budget"]
+    assert combined["invoices"]==own["invoices"]
+    assert combined["outlook"]==own["outlook"]
+    assert combined["selected_budget"]==combined["selected_months"][0]
+    for metric,key in [("expense","total_expense_cents"),("income","total_income_cents"),("result","result_cents")]:
+        full=detail(client,metric,person="all")
+        page=detail(client,metric,person="all",limit=1,offset=1)
+        assert full["total_cents"]==combined["selected_budget"][key]
+        assert page["total_cents"]==full["total_cents"]
+        assert page["items"]==full["items"][1:2]
+        assert {r["responsible_code"] for r in full["items"]}=={"self","parents"}
+    for phase in ("registered","forecast"):
+        assert detail(client,"expense",person="all",phase=phase)["total_cents"]==combined["selected_budget"][phase+"_expense_cents"]
+    assert sum(r["total_cents"] for r in combined["category_chart"])==combined["selected_budget"]["total_expense_cents"]
+    assert detail(client,"expense",person="all",category_id=category)["total_cents"]==7000
     assert counts(client)==before
 
 def test_parent_repayment_is_not_income_and_cash_does_not_become_parent_bank_balance(client):
@@ -52,6 +73,10 @@ def test_parent_repayment_is_not_income_and_cash_does_not_become_parent_bank_bal
     assert data["selected_budget"]["total_income_cents"]==0
     assert data["selected_budget"]["total_expense_cents"]==150000
     assert data["budget"]["cash_in_cents"]==40000
+    combined=overview(client,"all","2026-10")
+    assert combined["selected_budget"]["total_income_cents"]==0
+    assert combined["selected_budget"]["total_expense_cents"]==300000
+    assert combined["budget"]["cash_in_cents"]==40000
     assert client.get("/api/dashboard/details?month=2026-10&metric=cash&responsible_code=parents").status_code==422
 
 def test_budget_and_entry_chronology_precedes_pagination(client):

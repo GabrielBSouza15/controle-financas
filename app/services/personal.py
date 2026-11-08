@@ -8,7 +8,7 @@ from app.persistence.models import (PersonalOperation, Responsible, Invoice, Car
 from app.persistence.queries import active_entry_filter
 from app.persistence.settlements import allocation_totals, effective_amounts
 from app.persistence.entries import PersistenceValidationError
-from .settlements import safe, canonical, unused, replay, now_text, record_event_in_session
+from .settlements import safe, canonical, unused, replay, now_text, today_local, record_event_in_session
 from .catalogs import ConflictError, NotFoundError
 
 INITIAL_REINVESTMENT = 0
@@ -64,15 +64,30 @@ def pay_bill(engine, data):
     with transaction(engine) as session:
         old = previous(session, data)
         if old is not None: return old
+        no_account = data.get("paid_without_account", False)
+        if no_account == (data.get("account_id") is not None):
+            raise PersistenceValidationError("Escolha pagamento sem conta ou informe uma conta, sem combinar os dois.")
+        if data["occurred_on"] > today_local():
+            raise PersistenceValidationError("A data efetiva não pode estar no futuro.")
         current = bill_position(session, data["card_id"], data["month"])
         if current["remaining_cents"] != data["expected_remaining_cents"]:
             raise ConflictError("O restante da fatura mudou. Atualize e confira antes de pagar.")
         if current["remaining_cents"] <= 0: raise ConflictError("Esta fatura não tem valor pendente.")
         person = session.scalar(select(Responsible).where(Responsible.code == "self"))
         common = dict(kind="invoice_payment", occurred_on=data["occurred_on"], account_id=data["account_id"], reason="Pagamento integral da fatura do mês")
+        marks = []
         sequence = 0
         def send(rows, historical=False, invoice_id=None):
             nonlocal sequence
+            if no_account:
+                from app.persistence.models import BillPaymentMark
+                for row in rows:
+                    if not historical:
+                        part = session.get(Obligation, row["obligation_id"])
+                        if data["occurred_on"] < session.get(Entry, part.entry_id).occurred_on:
+                            raise PersistenceValidationError("A data efetiva não pode preceder o lançamento de origem.")
+                    marks.append(BillPaymentMark(operation_key=data["request_key"], occurred_on=data["occurred_on"], **row))
+                return
             for start in range(0, len(rows), 100):
                 chunk = rows[start:start+100]; sequence += 1
                 payload = dict(common, request_key=data["request_key"] + ":" + str(sequence),
@@ -101,6 +116,8 @@ def pay_bill(engine, data):
             send(rows, historical=True)
         result={"paid_cents": current["remaining_cents"]}
         save_operation(session, data, "bill_payment", result)
+        session.add_all(marks)
+        session.flush()
         return result
 
 def flow(engine, date_from, date_to, limit=50, offset=0):
@@ -116,6 +133,10 @@ def flow(engine, date_from, date_to, limit=50, offset=0):
         items=budget_items(session,data)
         paid=allocation_totals(session,[i["obligation_id"] for i in items if i.get("obligation_id")])
         usage=totals(session); historic={r.id:r for r in history_rows(session)}
+        from app.persistence.models import BillPaymentMark
+        marks = list(session.scalars(select(BillPaymentMark)))
+        marked_parts = {m.obligation_id:m for m in marks if m.obligation_id}
+        marked_history = {m.record_id:m for m in marks if m.record_id}
         result=[]
         for item in items:
             # Cartão segue o ciclo; sem cartão segue a data prevista original.
@@ -129,6 +150,9 @@ def flow(engine, date_from, date_to, limit=50, offset=0):
                 else:
                     p=paid[item["obligation_id"]]; pending=max(0,item["amount_cents"]-p["payment_cents"]-p["credit_applied_cents"])
                     status="Pago" if pending==0 else "Parcial" if pending<item["amount_cents"] else "Pendente"
+            mark = marked_history.get(item.get("history_record_id")) if item.get("history_record_id") else marked_parts.get(item.get("obligation_id"))
+            if mark:
+                status += " · sem conta em " + mark.occurred_on.strftime("%d/%m/%Y")
             result.append(dict(item,date=day,payment_status=status,pending_cents=safe(pending)))
-        result.sort(key=lambda i:(i["date"],i["scheduled_on"],i.get("history_record_id") or i.get("obligation_id") or i.get("series_id") or 0))
+        result.sort(key=lambda i:(i["date"],i["scheduled_on"],i.get("history_record_id") or i.get("obligation_id") or i.get("series_id") or 0), reverse=True)
         return dict(items=result[offset:offset+limit],total=len(result),limit=limit,offset=offset)

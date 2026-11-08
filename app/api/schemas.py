@@ -41,9 +41,22 @@ class CategoryInput(InputModel):
     parent_id: PositiveId | None = None
 
 
+UNINFORMED_REASON = "Não informado"
+
+
+def optional_reason(value):
+    """Preserva a auditoria sem exigir que o usuário escreva uma observação."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return UNINFORMED_REASON
+    return value
+
+
+Reason = Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=1000), BeforeValidator(optional_reason)]
+
+
 class HistoryConfirmation(InputModel):
     record_ids: Annotated[list[PositiveId], Field(min_length=1, max_length=1447)]
-    reason: Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=1000)]
+    reason: Reason = UNINFORMED_REASON
 
 
 def normalize_payment_method(value):
@@ -79,11 +92,8 @@ class EntryInput(InputModel):
         return EntryDraft(**{key: value for key, value in self.model_dump().items() if key not in {"reason", "history_confirmation", "parents_repayment", "immediate_account_id", "paid_without_account"}})
 
 
-Reason = Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=1000)]
-
-
 class EditInput(EntryInput):
-    reason: Reason
+    reason: Reason = UNINFORMED_REASON
 
     @model_validator(mode="after")
     def no_payment_on_edit(self):
@@ -94,7 +104,7 @@ class EditInput(EntryInput):
 
 class CancelInput(InputModel):
     request_key: Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=128)]
-    reason: Reason
+    reason: Reason = UNINFORMED_REASON
 
 
 

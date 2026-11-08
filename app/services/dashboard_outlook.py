@@ -57,7 +57,7 @@ def card_plot(items, credits):
     return dict(segments=segments, total_cents=total, plot_min_cents=min(0, credits), plot_max_cents=end)
 
 
-def build_outlook(session, data, items, card_id=None, *, income_items=None):
+def build_outlook(session, data, items, card_id=None, *, income_items=None, responsible_code="all"):
     from datetime import date
     refs = [date.fromisoformat(row["month"]) for row in data["months"]]
     adjustments = card_adjustments(session, refs)
@@ -92,7 +92,13 @@ def build_outlook(session, data, items, card_id=None, *, income_items=None):
                               + sum(item["amount_cents"] for item in credits))
             forecast = safe(sum(item["amount_cents"] for item in own if item["phase"] == "forecast"))
             parts={person: safe(sum(item["amount_cents"] for item in own if item["responsible_code"]==person)) for person in ("self","parents")}
+            chosen = [i for i in own if responsible_code == "all" or i["responsible_code"] == responsible_code]
+            chosen_credits = safe(sum(i["amount_cents"] for i in credits)) if responsible_code == "all" else 0
             card_rows.append({
+                "selected_plot": card_plot(chosen, chosen_credits),
+                "selected_credits_cents": chosen_credits,
+                "selected_registered_cents": safe(sum(i["amount_cents"] for i in chosen if i["phase"] == "registered") + chosen_credits),
+                "selected_forecast_cents": safe(sum(i["amount_cents"] for i in chosen if i["phase"] == "forecast")),
                 "card_id": card["id"], "card_name": card["name"],
                 "plot": card_plot(own, safe(sum(item["amount_cents"] for item in credits))),
                 "registered_cents": registered, "forecast_cents": forecast,
@@ -108,15 +114,17 @@ def build_outlook(session, data, items, card_id=None, *, income_items=None):
             "expense_totals":graph_totals(*(sum(s["amount_cents"] for s in segments if s["responsible_code"]==person) for person in ("self","parents"))),
             "income_totals": income_totals,
             "month": ref, "all_expense_cents": start, "expense_segments": segments, "cards": card_rows})
-    return {"cards": cards, "available_cards":available_cards,"selected_card_id":card_id, "months": months,
+    return {"selected_responsible_code": responsible_code, "cards": cards, "available_cards":available_cards,"selected_card_id":card_id, "months": months,
             "scope": "all_responsibles_by_budget_cycle_not_cash_or_unpaid_balance",
             "includes_monthly_forecasts": True, "income_scope": "all_responsibles_all_methods_independent_of_card_filter", "historical_cycles_are_estimates": True}
 
 
-def details(engine, month, metric, *, card_id=None, limit=50, offset=0):
+def details(engine, month, metric, *, card_id=None, limit=50, offset=0, responsible_code="all"):
     from .dashboard import budget_items
     if (metric in {"card","card_expense"}) != (card_id is not None):
         raise PersistenceValidationError("Escolha um cartão apenas para os detalhes das faturas.")
+    if responsible_code not in {"all", "self", "parents"} or (responsible_code != "all" and metric not in {"card", "card_expense"}):
+        raise PersistenceValidationError("Selecione responsável somente na composição de um cartão.")
     with Session(engine) as session:
         if card_id is not None and session.get(Card, card_id) is None:
             raise PersistenceValidationError("Cartão não encontrado.")
@@ -124,12 +132,13 @@ def details(engine, month, metric, *, card_id=None, limit=50, offset=0):
         items = [dict(item, contribution_cents=item["amount_cents"])
                  for item in budget_items(session, data) if item["kind"] == ("income" if metric == "all_income" else "expense")
                  and (card_id is None or item.get("card_id") == card_id)
+                 and (responsible_code == "all" or item["responsible_code"] == responsible_code)
                  and (metric != "all_cards" or item.get("card_id") is not None)]
-        if metric in {"card","all_cards"}:
+        if metric in {"card","all_cards"} and responsible_code == "all":
             items.extend(item for item in card_adjustments(session, [month]) if card_id is None or item["card_id"] == card_id)
         total = safe(sum(item["contribution_cents"] for item in items))
         from .projections import budget_order
         items.sort(key=budget_order)
-        return {"month": month.isoformat(), "metric": metric, "card_id": card_id,
+        return {"month": month.isoformat(), "metric": metric, "card_id": card_id, "responsible_code": responsible_code,
                 "total_cents": total, "total": len(items), "limit": limit, "offset": offset,
                 "items": items[offset:offset + limit]}

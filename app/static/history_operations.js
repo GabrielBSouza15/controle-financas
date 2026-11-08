@@ -23,9 +23,9 @@ export function createHistoryOperations({api,notify,localDate,refreshAll}){
  }
  async function refresh(){
   state.data=await api("/history/operations?limit=30&offset="+state.offset);
-  choices("history-op-record",state.data.records,r=>"Linha "+r.source_row+" · "+(r.description||"Sem descrição")+" · "+formatCents(r.effective_cents));
+  choices("history-op-record",state.data.records,r=>(r.description||"Sem descrição")+" · "+formatCents(r.effective_cents));
   choices("history-op-event",state.data.event_options,e=>"#"+e.id+" · "+(eventNames[e.kind]||e.kind)+" · disponível "+formatCents(e.available_cents));
-  choices("history-op-link",state.data.links.filter(l=>l.remaining_cents>0).map(l=>({...l,id:l.token})),l=>"Fato #"+l.event_id+" · linha "+(state.data.records.find(r=>r.id===l.record_id)?.source_row||l.record_id)+" · "+formatCents(l.remaining_cents));
+  choices("history-op-link",state.data.links.filter(l=>l.remaining_cents>0).map(l=>({...l,id:l.token})),l=>"Fato #"+l.event_id+" · "+(state.data.records.find(r=>r.id===l.record_id)?.description||"Descrição ausente")+" · "+formatCents(l.remaining_cents));
   const catalogs=await api("/catalogs");choices("history-op-account",catalogs.accounts,a=>a.name);
   $("history-operations-list").replaceChildren();
   for(const op of state.data.items){const li=document.createElement("li");li.textContent="#"+op.id+" · "+labels[op.kind]+" · "+formatSignedCents(op.amount_cents)+" · "+op.occurred_on+" · "+op.reason;$("history-operations-list").append(li);}

@@ -10,6 +10,7 @@ from .invoices import invoice_summaries
 from .adjustments import invoice_snapshot
 from .settlements import safe, canonical
 from .dashboard_outlook import build_outlook
+from .dashboard_tasks import pending_tasks
 
 
 def validate_period(months):
@@ -37,7 +38,7 @@ def select_items(items, metric, *, category_id=None, history_category=None, unca
         if phase != "all" and item["phase"] != phase:
             continue
         person = "parents" if metric == "parents_expense" else responsible_code if metric in {"expense", "income", "result"} else "self"
-        if item["responsible_code"] != person:
+        if person != "all" and item["responsible_code"] != person:
             continue
         if metric not in {"self_result", "result"} and item["kind"] != ("income" if metric in {"self_income", "income"} else "expense"):
             continue
@@ -53,7 +54,7 @@ def select_items(items, metric, *, category_id=None, history_category=None, unca
 
 
 def person_budget(items, month, responsible_code):
-    selected = [item for item in items if item["responsible_code"] == responsible_code and item["month"] == month]
+    selected = [item for item in items if (responsible_code == "all" or item["responsible_code"] == responsible_code) and item["month"] == month]
     row = {"month": month}
     for phase in ("registered", "forecast"):
         for kind in ("expense", "income"):
@@ -110,10 +111,10 @@ def category_chart(rows):
     return shown
 
 
-def summary(engine, month, months=6, chart_card_id=None, responsible_code="self"):
+def summary(engine, month, months=6, chart_card_id=None, responsible_code="self", card_responsible_code="all"):
     validate_period(months)
-    if responsible_code not in {"self", "parents"}:
-        raise PersistenceValidationError("Escolha Eu ou Pai/Mãe.")
+    if responsible_code not in {"self", "parents", "all"} or card_responsible_code not in {"self", "parents", "all"}:
+        raise PersistenceValidationError("Escolha Eu, Pai/Mãe ou Todos.")
     with Session(engine) as session:
         # Todas as perspectivas desta resposta compartilham a mesma fotografia de leitura.
         data = projection_in_session(session, month, months, limit=None)
@@ -146,11 +147,12 @@ def summary(engine, month, months=6, chart_card_id=None, responsible_code="self"
         chart_items = items if chart_card_id is None else budget_items(session, chart_data)
         return {
             "month": month.isoformat(), "horizon": months,
+            "pending_tasks": pending_tasks(session),
             "budget": selected, "months": data["months"],
             "responsible_code": responsible_code,
             "selected_budget": person_budget(items, month.isoformat(), responsible_code),
             "selected_months": [person_budget(items, row["month"], responsible_code) for row in data["months"]],
-            "outlook": build_outlook(session, chart_data, chart_items, chart_card_id, income_items=items),
+            "outlook": build_outlook(session, chart_data, chart_items, chart_card_id, income_items=items, responsible_code=card_responsible_code),
             "categories": category_rows, "category_chart": category_chart(category_rows), "invoices": invoices, "historical_invoices": historical_invoices,
             "quality": {
                 "uncategorized_expense_items": sum(item["kind"] == "expense" and item["category_id"] is None and not item.get("history_category") for item in current),
@@ -175,35 +177,45 @@ def summary(engine, month, months=6, chart_card_id=None, responsible_code="self"
 
 
 def details(engine, month, metric, *, category_id=None, history_category=None, uncategorized=False, other_categories=False, category_name=None, phase="all", limit=50, offset=0, responsible_code="self"):
+    with Session(engine) as session:
+        return details_in_session(session, month, metric, category_id=category_id,
+            history_category=history_category, uncategorized=uncategorized,
+            other_categories=other_categories, category_name=category_name, phase=phase,
+            limit=limit, offset=offset, responsible_code=responsible_code)
+
+
+def details_in_session(session, month, metric, *, category_id=None, history_category=None,
+                       uncategorized=False, other_categories=False, category_name=None,
+                       phase="all", limit=50, offset=0, responsible_code="self"):
+    """Composição integral na sessão do relatório, antes de qualquer paginação."""
     if category_name is not None and (metric != "expense" or category_id is not None or history_category is not None or uncategorized or other_categories):
         raise PersistenceValidationError("Escolha o nome da categoria apenas nas despesas, sem combinar outros filtros de categoria.")
     if other_categories and (metric != "expense" or category_id is not None or history_category is not None or uncategorized):
         raise PersistenceValidationError("Outros se aplica apenas às demais categorias de despesas.")
-    with Session(engine) as session:
-        if metric == "cash":
-            if responsible_code != "self" or phase != "all" or category_id is not None or history_category is not None or uncategorized:
-                raise PersistenceValidationError("A composição do caixa usa somente o mês efetivo.")
-            items = [
-                dict(item, contribution_cents=item["amount_cents"] if item["direction"] == "in" else -item["amount_cents"])
-                for item in cash_records(session) if item["occurred_on"][:7] == month.isoformat()[:7]
-            ]
-            items.sort(key=lambda item: (item["occurred_on"], item["kind"], item["id"], item["direction"]))
-        else:
-            data = projection_in_session(session, month, 1, limit=None)
-            all_items = budget_items(session, data)
-            excluded = set()
-            if other_categories:
-                ranked = named_categories(category_totals(all_items, responsible_code))
-                excluded = {r["name"] for r in ranked[:5]}
-            items = select_items(all_items, metric,
-                                 category_id=category_id, history_category=history_category, uncategorized=uncategorized, phase=phase, responsible_code=responsible_code)
-            if other_categories:
-                items = [item for item in items if category_key(item) != ("catalog", None) and item["category_name"] not in excluded]
-            if category_name is not None:
-                items = [item for item in items if category_key(item) != ("catalog", None) and item["category_name"] == category_name]
-        total_cents = safe(sum(item["contribution_cents"] for item in items))
-        return {
-            "month": month.isoformat(), "metric": metric, "phase": phase,
-            "total": len(items), "total_cents": total_cents,
-            "items": items[offset:offset + limit], "limit": limit, "offset": offset,
-        }
+    if metric == "cash":
+        if responsible_code != "self" or phase != "all" or category_id is not None or history_category is not None or uncategorized:
+            raise PersistenceValidationError("A composição do caixa usa somente o mês efetivo.")
+        items = [
+            dict(item, contribution_cents=item["amount_cents"] if item["direction"] == "in" else -item["amount_cents"])
+            for item in cash_records(session) if item["occurred_on"][:7] == month.isoformat()[:7]
+        ]
+        items.sort(key=lambda item: (item["occurred_on"], item["kind"], item["id"], item["direction"]))
+    else:
+        data = projection_in_session(session, month, 1, limit=None)
+        all_items = budget_items(session, data)
+        excluded = set()
+        if other_categories:
+            ranked = named_categories(category_totals(all_items, responsible_code))
+            excluded = {r["name"] for r in ranked[:5]}
+        items = select_items(all_items, metric,
+                             category_id=category_id, history_category=history_category, uncategorized=uncategorized, phase=phase, responsible_code=responsible_code)
+        if other_categories:
+            items = [item for item in items if category_key(item) != ("catalog", None) and item["category_name"] not in excluded]
+        if category_name is not None:
+            items = [item for item in items if category_key(item) != ("catalog", None) and item["category_name"] == category_name]
+    total_cents = safe(sum(item["contribution_cents"] for item in items))
+    return {
+        "month": month.isoformat(), "metric": metric, "phase": phase,
+        "total": len(items), "total_cents": total_cents,
+        "items": items[offset:] if limit is None else items[offset:offset + limit], "limit": limit, "offset": offset,
+    }

@@ -125,7 +125,9 @@ def test_stale_or_invalid_confirmation_cannot_bypass(client):
     confirmed=payload(client,description="Outra",history_confirmation={"record_ids":[1],"reason":"distinto"})
     assert client.post("/api/entries",json=confirmed).status_code==422
     assert client.post("/api/entries",json=payload(client,history_confirmation={"record_ids":[True],"reason":"x"})).status_code==422
-    assert client.post("/api/entries",json=payload(client,history_confirmation={"record_ids":[1],"reason":" "})).status_code==422
+    response=client.post("/api/entries",json=payload(client,history_confirmation={"record_ids":[1],"reason":" "}))
+    assert response.status_code==200,response.text
+    assert response.json()["history_overlap_review"]["reason"]=="Não informado"
 
 def test_candidate_new_entry_payment_and_restricted_commands(client,tmp_path):
     load(client)

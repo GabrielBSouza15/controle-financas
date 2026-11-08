@@ -21,6 +21,24 @@ São cinco lançamentos e três recorrências. A bolsa registrada pertence ao m�
 
 Use o detalhamento para conferir as origens. Registros pagos sem conta não criam movimentos bancários fictícios. Repasse familiar não altera quem é responsável pela despesa.
 
+## Consultar e exportar despesas
+
+Na Visão geral, escolha o mês e Eu, Pai/Mãe ou Todos. Os filtros das faturas são independentes dos indicadores de orçamento. A lista Contas a cadastrar e pagar reúne recorrências e faturas pendentes do mês atual e do seguinte; confirmar uma previsão não significa pagá-la.
+
+Abra Ver despesas e use Exportar PDF para baixar o relatório A4 completo, mesmo quando a tela tem várias páginas. O documento identifica os filtros e as estimativas, separa PIX/Débito e cartões e informa o total previsto do mês seguinte. Todos inclui os responsáveis e seus subtotais. O relatório é gerado localmente em memória, sem gravar alterações financeiras.
+
+## Editar e informar pagamentos
+
+Receitas e despesas permite Editar e Remover, com confirmação e histórico das versões. Remover retira o compromisso dos totais ativos e preserva a evidência; não registra devolução de dinheiro. Despesas próprias via PIX/Débito pagas sem conta mantêm essa condição ao editar se continuarem no mesmo tipo, responsável e meio, com data não futura. Outros vínculos financeiros e faturas fechadas preservam seus bloqueios.
+
+Marcar fatura paga pede a data efetiva e quita apenas o restante dos compromissos lançados. Estimativas e compras acrescentadas depois permanecem pendentes. A indicação sem conta não cria movimento bancário, outra despesa ou repasse familiar. A evidência é imutável e não oferece desmarcação. A API com conta explícita continua disponível em modo separado.
+
+Motivos e observações são opcionais; a auditoria registra Não informado quando não houver texto. Confirmações explícitas de compromissos distintos continuam necessárias quando houver possível sobreposição histórica. O Fluxo de caixa apresenta as datas mais recentes primeiro.
+
+## Atualizar um banco de exercício existente
+
+Esta versão usa o esquema `0017_bill_payment_marks`. A abertura verifica a revisão, sem migrar automaticamente. Para um banco de exercício de versão anterior, encerre o servidor, faça backup consistente e confira a restauração para outro arquivo antes de executar `python -m app.persistence upgrade --database CAMINHO_DO_BANCO`. Confira a revisão com `python -m app.persistence status --database CAMINHO_DO_BANCO`. O preparador vazio/fictício permanece exclusivo para destinos inexistentes.
+
 ## Preservar o trabalho local
 
 Os bancos, planilhas, backups e dados de importação são ignorados pelo Git. Faça cópias pela funcionalidade da aplicação e confira a restauração para um arquivo novo. Não compartilhe uma cópia preenchida com dados reais como exemplo. Mantenha SQLite ativo fora de sincronização e não exponha o servidor à internet.
