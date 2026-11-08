@@ -35,21 +35,22 @@ def entry_data(session, entry, *, details=False):
               "account_id": entry.account_id, "account_name": account.name if account else None,
               "paid_without_account": session.get(EntryPaymentMark, entry.id) is not None,
               "parents_repayment": repayment_status}
+    result["has_settlement_links"] = entry_has_settlement(session, entry.id, include_payment_mark=False)
+    result["can_modify"] = not change and not result["has_settlement_links"] and not session.scalar(select(Invoice.id).join(
+        Obligation).where(Obligation.entry_id == entry.id, Invoice.status == "closed").limit(1))
     if details:
         from app.persistence.models import HistoryEntryReview
         review = session.scalar(select(HistoryEntryReview).where(HistoryEntryReview.entry_id == entry.id))
         result["history_overlap_review"] = {"record_ids": json.loads(review.matches_json), "reason": review.reason, "recorded_at": review.recorded_at} if review else None
-        result["has_settlement_links"] = entry_has_settlement(session, entry.id)
-        result["can_modify"] = not change and not result["has_settlement_links"] and not session.scalar(select(Invoice.id).join(
-            Obligation).where(
-            Obligation.entry_id == entry.id, Invoice.status == "closed").limit(1))
         result["cycle_moves"] = [{"obligation_id":m.obligation_id,"source_invoice_id":m.source_invoice_id,"target_invoice_id":m.target_invoice_id,"reason":m.reason,"recorded_at":m.recorded_at} for m in session.scalars(select(ObligationMove).join(Obligation).where(Obligation.entry_id==entry.id).order_by(ObligationMove.id))]
         result["obligations"] = []
         paid = allocation_totals(session, [part.id for part in entry.obligations])
         deltas = effective_amounts(session, [part.id for part in entry.obligations])
+        from app.persistence.models import BillPaymentMark
+        bill_marks = {m.obligation_id:m for m in session.scalars(select(BillPaymentMark).where(BillPaymentMark.obligation_id.in_([p.id for p in entry.obligations])))}
         for part in entry.obligations:
             invoice = session.get(Invoice, part.invoice_id) if part.invoice_id else None
-            result["obligations"].append({"obligation_id": part.id, **paid[part.id], "number": part.number, "original_amount_cents": part.amount_cents, "adjustment_cents": deltas[part.id], "amount_cents": part.amount_cents + deltas[part.id],
+            result["obligations"].append({"obligation_id": part.id, "bill_payment_without_account": {"amount_cents":bill_marks[part.id].amount_cents,"occurred_on":bill_marks[part.id].occurred_on.isoformat()} if part.id in bill_marks else None, **paid[part.id], "number": part.number, "original_amount_cents": part.amount_cents, "adjustment_cents": deltas[part.id], "amount_cents": part.amount_cents + deltas[part.id],
                 "scheduled_date": part.scheduled_date.isoformat(), "budget_month": budget_month(part.scheduled_date, repayment_status).isoformat(), "invoice_id": part.invoice_id,
                 "closing_date": invoice.closing_date.isoformat() if invoice else None,
                 "due_date": invoice.due_date.isoformat() if invoice else None,
@@ -195,7 +196,7 @@ def change_entry(engine, source_id, request_key, reason, draft=None, history_con
                 raise ConflictError("Este registro já foi alterado ou cancelado. Consulte sua versão atual antes de continuar.")
             if session.scalar(select(Invoice.id).join(Obligation).where(Obligation.entry_id == source_id, Invoice.status == "closed").limit(1)):
                 raise ConflictError("Há parcela em fatura consolidada. A correção exige um ajuste específico; o histórico foi preservado.")
-            if entry_has_settlement(session, source_id):
+            if entry_has_settlement(session, source_id, include_payment_mark=False):
                 raise ConflictError("Este compromisso possui vínculo de liquidação. Preserve o histórico e use uma correção específica.")
             target_id = None
             if draft:
@@ -203,6 +204,17 @@ def change_entry(engine, source_id, request_key, reason, draft=None, history_con
                 target_id = record_entry_in_session(session, draft, history_confirmation)
                 from .parent_budget import register
                 register(session, target_id, parents_repayment, created=True)
+                # Corrigir a indicação sem conta preserva a evidência original.
+                # Uma mudança de natureza não confirma pagamento do substituto.
+                if (session.get(EntryPaymentMark, source_id) is not None
+                        and draft.kind == "expense" and draft.payment_method in {"pix", "cash"}
+                        and session.get(Responsible, draft.responsible_id).code == "self"
+                        and draft.account_id is None):
+                    from .settlements import today_local, now_text
+                    if draft.occurred_on > today_local():
+                        raise PersistenceValidationError("Pagamento sem conta não pode ter data futura. Use uma previsão.")
+                    session.add(EntryPaymentMark(entry_id=target_id, recorded_at=now_text()))
+                    session.flush()
             session.add(EntryChange(request_key=request_key, source_entry_id=source_id,
                 replacement_entry_id=target_id, action=action, reason=reason,
                 recorded_at=datetime.now(timezone.utc).isoformat(timespec="seconds"), payload_json=canonical))
