@@ -11,7 +11,7 @@ export function canvas(container,minimum,maximum,width,label,prefix) {
  const min=Math.min(0,minimum),max=Math.max(0,maximum),svg=node("svg",{viewBox:`0 0 ${width} 290`,class:"finance-svg",role:"group","aria-label":label});svg.style.minWidth=width+"px";
  const y=v=>40+plotY(v,min,max===min?1:max,170);
  const defs=node("defs");
- for(const series of ["income","expense","self","parents"]) {const pattern=node("pattern",{id:prefix+"-"+series,width:7,height:7,patternUnits:"userSpaceOnUse"});pattern.style.color=`var(--chart-${series})`;pattern.append(node("rect",{width:7,height:7,fill:"var(--surface)"}),node("path",{d:"M-2 2L2 -2M0 7L7 0M5 9L9 5",stroke:"currentColor","stroke-width":2}));defs.append(pattern);}svg.append(defs);
+ for(const series of ["income","expense","self","parents","nubank","mercado"]) {const pattern=node("pattern",{id:prefix+"-"+series,width:7,height:7,patternUnits:"userSpaceOnUse"});pattern.style.color=`var(--chart-${series})`;pattern.append(node("rect",{width:7,height:7,fill:"var(--surface)"}),node("path",{d:"M-2 2L2 -2M0 7L7 0M5 9L9 5",stroke:"currentColor","stroke-width":2}));defs.append(pattern);}svg.append(defs);
  for(const value of [...new Set([max,0,min])]) {const yy=y(value);svg.append(node("line",{x1:78,x2:width-8,y1:yy,y2:yy,class:value===0?"finance-zero":"finance-gridline"}),node("text",{x:70,y:yy+4,"text-anchor":"end"},axisText(value)));}
  container.replaceChildren(svg);return {svg,y,prefix};
 }

@@ -93,7 +93,7 @@ export function createInvoiceView({api, showEntry, showHistory, showOccurrence, 
         const name=cell(tr,item.description||"Sem descrição"),small=document.createElement("small");
         small.textContent=item.phase==="forecast"?`Estimativa · data prevista ${dateText(item.scheduled_on)}`:item.source==="statement_credit"?"Crédito entre faturas":`Parcela ${item.number}/${item.installment_count}`;name.append(small);
         cell(tr,item.responsible_code==="self"?"Eu":item.responsible_code==="parents"?"Pai/Mãe":"—");
-        cell(tr,item.phase==="forecast"?"Previsão mensal":item.history_record_id?`Planilha · linha ${item.source_row}`:item.source==="statement_credit"?"Crédito":"Novo lançamento");
+        cell(tr,item.phase==="forecast"?"Previsão mensal":item.history_record_id?"Planilha":item.source==="statement_credit"?"Crédito":"Novo lançamento");
         cell(tr,formatSignedCents(item.contribution_cents),"number");
         const action=cell(tr,"");
         if(item.phase==="forecast")link(action,"Ver previsão",()=>{$("bill-overview-dialog").close();return showOccurrence(item.series_id,item.reference_month.slice(0,7));});

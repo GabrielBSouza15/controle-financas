@@ -11,7 +11,7 @@ export function createBudgetCharts(open) {
   offset=Math.min(offset,Math.max(0,data.selected_months.length-1));
   const rows=data.selected_months.slice(offset,offset+capacity);
   const max=Math.max(0,...all.flatMap(r=>[r.total_income_cents,r.total_expense_cents]));
-  const width=Math.max(available,86+rows.length*step),person=data.responsible_code==="parents"?"Pai/Mãe":"Eu";
+  const width=Math.max(available,86+rows.length*step),person=data.responsible_code==="all"?"Todos":data.responsible_code==="parents"?"Pai/Mãe":"Eu";
   const chart=canvas($("budget-month-chart"),0,max,width,`Receitas e despesas previstas de ${person}. Sólido: lançado; listrado: estimativa.` ,"budget");
   rows.forEach((row,i)=>{const mid=86+(i+.5)*(width-94)/rows.length;
    for(const [metric,shift,name] of [["income",-step/4,"Receitas"],["expense",step/4,"Despesas"]]) {
@@ -46,7 +46,7 @@ export function createBudgetCharts(open) {
   });
   $("result-page-label").textContent=`${monthText(rows[0].month)} a ${monthText(rows.at(-1).month)} · ${resultOffset+1}–${resultOffset+rows.length} de ${all.length} meses`;
   $("result-prev").disabled=!resultOffset;$("result-next").disabled=resultOffset+resultCapacity>=all.length;
-  $("budget-result-note").textContent=rows.some(r=>!r.total_income_cents)?"Há mês sem receitas cadastradas para este responsável. O resultado reflete somente as informações disponíveis.":"Cada coluna abre a composição do resultado. Use os botões para navegar pelo período.";
+  $("budget-result-note").textContent=rows.some(r=>!r.total_income_cents)?"Há mês sem receitas cadastradas para a seleção. O resultado reflete somente as informações disponíveis.":"Cada coluna abre a composição do resultado. Use os botões para navegar pelo período.";
  }
  function tables() {
   $("budget-month-values").replaceChildren();$("budget-result-values").replaceChildren();
