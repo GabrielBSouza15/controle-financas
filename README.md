@@ -18,13 +18,17 @@ Captura da aplicação com dados inteiramente fictícios. Para experimentar, sig
 - Compras parceladas, ciclos de cartão, faturas e pagamentos registrados explicitamente.
 - Gastos recorrentes e projeções, com distinção entre registrado e estimado.
 - Orçamento, gráficos, filtros, composição dos valores e fluxo de caixa.
+- Visão geral de Eu, Pai/Mãe ou Todos, com compromissos a cadastrar e pagar e comparação das faturas por cartão.
+- Exportação mensal das despesas em PDF, com estimativas identificadas e total previsto do mês seguinte.
+- Edição e cancelamento auditados de lançamentos, inclusive despesas próprias pagas sem conta.
+- Quitação explícita do restante lançado da fatura sem exigir conta bancária, preservando repasses separados.
 - Backups locais, restauração para outro arquivo e histórico auditável.
 
 Pagamento de fatura não cria uma segunda despesa; repasse familiar não é receita pessoal. Dinheiro é representado em centavos inteiros. Previsões não são pagamentos.
 
 ## Tecnologias
 
-Python 3.12, FastAPI, Pydantic, Uvicorn, Jinja2, SQLAlchemy, Alembic e SQLite; HTML, CSS, JavaScript e SVG; pytest e testes JavaScript com Node.js. As versões de referência estão em `requirements-dev.lock.txt`.
+Python 3.12, FastAPI, Pydantic, Uvicorn, Jinja2, SQLAlchemy, Alembic, SQLite e ReportLab para PDF; HTML, CSS, JavaScript e SVG; pytest e testes JavaScript com Node.js. As versões de referência estão em `requirements-dev.lock.txt`.
 
 ## Duas modalidades
 
