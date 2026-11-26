@@ -1,7 +1,8 @@
 // A interface apenas apresenta as consultas; a autoridade dos valores é o backend.
 import {formatCents,formatSignedCents} from "/static/money.mjs";
+import {createMonthlyCards} from "/static/monthly_cards.js";
 
-export function createInvoiceView({api, showEntry, showHistory, showOccurrence, dateText, localDate, onPayment, onRepayment, onClose, onWholePayment}) {
+export function createInvoiceView({api, showEntry, showHistory, showOccurrence, dateText, localDate, onPayment, onRepayment, onClose, onWholePayment, openCard}) {
   const $ = id => document.getElementById(id);
   const state = {offset: 0, sequence: 0, detailId: null, detailOffset: 0, detailSequence: 0, current:null};
   const cycleText = iso => `${iso.slice(5,7)}/${iso.slice(0,4)}`;
@@ -14,9 +15,11 @@ export function createInvoiceView({api, showEntry, showHistory, showOccurrence, 
     for (const item of items) element.add(new Option(item.name, String(item.id)));
     if ([...element.options].some(option => option.value === previous)) element.value = previous;
   }
+  const monthly = createMonthlyCards($("invoice-monthly-cards"), {api, dateText, localDate, open: openCard});
   function updateCatalogs(catalogs) {
-    setOptions("invoice-filter-card",catalogs.cards);
-    setOptions("invoice-filter-responsible",catalogs.responsibles);
+    setOptions("invoice-filter-card", catalogs.cards);
+    setOptions("invoice-filter-responsible", catalogs.responsibles);
+    monthly.updateCatalogs(catalogs);
   }
   const overview={card:null,month:null,name:"",offset:0,sequence:0,invoiceId:null};
   function link(parent,text,action){
@@ -115,7 +118,6 @@ export function createInvoiceView({api, showEntry, showHistory, showOccurrence, 
   const initialMonth=localDate().slice(0,7);
   $("invoice-filters").elements.month_from.value=initialMonth;
   $("invoice-filters").elements.month_to.value=initialMonth;
-  $("invoice-filters").addEventListener("change",()=>{state.offset=0;refresh();});
   async function showDetails() {
     const sequence = ++state.detailSequence, id = state.detailId, offset = state.detailOffset;
     error("invoice-detail-error","");
@@ -168,5 +170,5 @@ export function createInvoiceView({api, showEntry, showHistory, showOccurrence, 
   for(const [id,action] of [["pay-invoice",onPayment],["repay-invoice",onRepayment],["close-invoice",onClose]]) $(id).addEventListener("click",()=>{
     const invoice=state.current;$("invoice-dialog").close();Promise.resolve(action(invoice)).catch(failure=>error("invoice-error",failure.message));
   });
-  return {updateCatalogs,refresh,open:async id=>{state.detailId=id;state.detailOffset=0;await showDetails();}};
+  return {updateCatalogs,refresh: () => Promise.all([refresh(), monthly.refresh()]),open:async id=>{state.detailId=id;state.detailOffset=0;await showDetails();}};
 }

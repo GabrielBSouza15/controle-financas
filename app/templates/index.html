@@ -1,8 +1,9 @@
+{% from "monthly_cards.html" import monthly_cards %}
 <!doctype html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="pt-BR" data-theme="light">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="csrf-token" content="{{ csrf_token }}"><title>Controle financeiro</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/app.css"><script type="module" src="/static/app.js"></script></head>
 <body data-history-candidate="{{ 'true' if history_candidate else 'false' }}">
-<aside class="sidebar"><a class="brand" href="/"><span class="brand-mark">CF</span><span>Controle financeiro<small>Seu dinheiro, com clareza.</small></span></a>
+<aside class="sidebar"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span><span>Controle financeiro</span></a>
 <nav aria-label="Principal">
 <button id="nav-dashboard" class="nav active" aria-current="page">Visão geral</button>
 <button id="nav-entries" class="nav">Receitas e despesas</button>
@@ -17,24 +18,25 @@
 <button id="nav-maintenance" class="nav">Cópias de segurança</button>
 <button id="nav-catalogs" class="nav">Meus cadastros</button>
 <button id="nav-legacy" class="nav">Importação antiga</button></details></nav>
-<div class="sidebar-note"><span class="dot"></span> Somente neste computador<p>Planeje os próximos meses e acompanhe o que já foi pago.</p></div></aside>
-<main>{% if history_candidate %}<div class="info">Base candidata de conferência. Histórico, novos compromissos, recorrências e ajustes estão disponíveis. Use Histórico da planilha para os registros antigos e Lançamentos/Faturas para os novos compromissos.</div>{% endif %}<div class="topline"><span>Seu controle financeiro</span><div class="topline-actions"><span class="badge">{{ "Base principal · uso local" if adopted else "Uso local" }}</span><button id="theme-toggle" type="button" class="secondary" aria-label="Ativar tema claro">☀ Tema claro</button></div></div><div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+<div class="sidebar-note"><span class="dot" aria-hidden="true"></span> {{ "Base principal · uso local" if adopted else "Uso local" }}</div></aside>
+<main id="main-content"><div class="topline"><div class="topline-actions"><button id="theme-toggle" type="button" class="secondary" aria-label="Ativar tema escuro">☾ Tema escuro</button></div></div>{% if history_candidate %}<div class="info">Base candidata de conferência. Histórico, novos compromissos, recorrências e ajustes estão disponíveis. Use Histórico da planilha para os registros antigos e Lançamentos/Faturas para os novos compromissos.</div>{% endif %}<div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 {% include "dashboard.html" %}
 {% include "personal.html" %}
 {% include "maintenance.html" %}
 <section id="entries-view" hidden><header class="page-header"><div><h1>Receitas e despesas</h1><p>Consulte suas receitas e os compromissos que você assumiu.</p></div><button id="new-entry" class="primary" disabled>+ Adicionar receita ou despesa</button></header>
 <div class="info">Aqui você vê o <strong>valor total de cada lançamento</strong>. Consulte os detalhes para acompanhar suas parcelas. Novas despesas de Eu em PIX/Débito ficam pagas sem conta bancária. Nos demais casos, cadastrar não confirma pagamento.</div>
-<form id="filters" class="panel filters"><label class="search">Buscar descrição<input name="q" placeholder="Ex.: mercado, curso, salário" maxlength="200" type="search"></label><label>Tipo<select name="kind"><option value="">Todos</option><option value="expense">Despesa</option><option value="income">Receita</option></select></label><label>Responsável<select name="responsible_id" id="filter-responsible"><option value="">Todos</option></select></label><label>Meio<select name="payment_method"><option value="">Todos</option><option value="credit">Crédito</option><option value="pix_debit">PIX/Débito</option></select></label><label>Cartão<select name="card_id" id="filter-card"><option value="">Todos</option></select></label><label>Situação<select name="status"><option value="active">Ativos</option><option value="cancelled">Cancelados</option><option value="superseded">Versões anteriores</option><option value="all">Todos, com histórico</option></select></label><label>Data original: de<input name="date_from" type="date"></label><label>Até<input name="date_to" type="date"></label><div class="filter-actions"><button class="primary" type="submit">Filtrar</button><button class="secondary" type="reset">Limpar</button></div></form>
+<form id="filters" class="panel filters"><label class="search">Buscar descrição<input name="q" placeholder="Ex.: mercado, curso, salário" maxlength="200" type="search"></label><label>Tipo<select name="kind"><option value="">Todos</option><option value="expense">Despesa</option><option value="income">Receita</option></select></label><label>Responsável<select name="responsible_id" id="filter-responsible"><option value="">Todos</option></select></label><label>Meio<select name="payment_method"><option value="">Todos</option><option value="credit">Crédito</option><option value="pix_debit">PIX/Débito</option></select></label><label>Cartão<select name="card_id" id="filter-card"><option value="">Todos</option></select></label><label>Situação<select name="status"><option value="active">Ativos</option><option value="cancelled">Cancelados</option><option value="superseded">Versões anteriores</option><option value="all">Todos, com histórico</option></select></label><label>Data original: de<input name="date_from" type="date"></label><label>Até<input name="date_to" type="date"></label><div class="filter-actions"><button class="secondary" type="reset">Limpar filtros</button></div></form>
 <div class="panel results"><div class="section-heading"><h2>Seus registros</h2><span id="result-count" class="muted"></span></div><div id="entry-empty" class="empty" hidden><div class="empty-symbol">↗</div><h3 id="empty-title">Nenhum lançamento por aqui</h3><p id="empty-text">Comece registrando uma receita ou despesa.</p><button id="empty-setup" class="secondary" hidden>Preparar cadastros</button></div><div id="entries-table-wrap" class="table-wrap" hidden><table><thead><tr><th>Descrição</th><th>Data da receita ou despesa</th><th>Responsável</th><th>Meio / cartão</th><th class="number">Valor total</th><th><span class="sr-only">Ações</span></th></tr></thead><tbody id="entry-rows"></tbody></table></div><footer class="pagination"><span id="page-position" class="muted"></span><div><button id="previous" class="secondary" disabled>Anterior</button><button id="next" class="secondary" disabled>Próxima</button></div></footer></div></section>
 <section id="invoices-view" hidden>
 <header class="page-header"><div><h1>Cartões e faturas</h1><p>Lançamentos e previsões mensais, por cartão e mês, com estimativas identificadas.</p></div></header>
+{{ monthly_cards("invoice") }}
 <form id="invoice-filters" class="panel invoice-filters invoice-toolbar">
 <label>Cartão<select name="card_id" id="invoice-filter-card"><option value="">Todos os cartões</option></select></label>
 <label>Do mês<input type="month" name="month_from"></label><label>Até o mês<input type="month" name="month_to"></label>
+<div class="filter-actions"><button class="secondary" type="reset">Limpar filtros</button></div>
 <details class="invoice-more"><summary>Mais filtros</summary><div class="invoice-more-fields">
 <label>Com despesas de<select name="responsible_id" id="invoice-filter-responsible"><option value="">Todos</option></select></label>
 <label>Fechamento<select name="status"><option value="">Todos</option><option value="open">Com novos lançamentos abertos</option><option value="closed">Com novos lançamentos fechados</option><option value="historical">Com histórico da planilha</option></select></label></div></details>
-<div class="filter-actions"><button class="primary" type="submit">Aplicar filtros</button><button class="secondary" type="reset">Limpar filtros</button></div>
 </form>
 <p id="invoice-error" class="form-error" role="alert" hidden></p>
 <section class="panel invoice-results"><div class="section-heading"><h2>Suas faturas</h2><span id="invoice-result-count" class="muted" role="status" aria-live="polite"></span></div>

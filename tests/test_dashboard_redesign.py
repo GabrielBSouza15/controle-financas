@@ -89,3 +89,70 @@ def test_category_name_unifies_chart_and_preserves_source_identities(client):
 def test_named_category_filter_cannot_leak_into_other_metrics(client):
     for params in [dict(metric="cash"),dict(metric="income"),dict(metric="result"),dict(metric="expense",uncategorized=True),dict(metric="expense",other_categories=True),dict(metric="expense",category_id=1)]:
         assert client.get("/api/dashboard/details",params=dict(month="2026-10",category_name="Teste")|params).status_code==422
+
+
+def test_chart_phase_recalculates_result_categories_and_other_details(client):
+    for i in range(7):
+        category = client.post("/api/categories", json={"name": f"Categoria {i}"}).json()["id"]
+        entry(client, request_key=f"category-{i}", category_id=category, total_cents=100 + i)
+        series(client, request_key=f"forecast-{i}", category_id=category, amount_cents=300 - i * 10)
+    entry(client, request_key="income", kind="income", payment_method="pix", card_id=None, total_cents=2000)
+    series(client, request_key="income-forecast", kind="income", amount_cents=1000)
+    before = counts(client)
+    combined = dashboard(client)
+
+    for phase, income, expense, others in [("registered", 2000, 721, 201), ("forecast", 1000, 1890, 490)]:
+        data = dashboard(client, phase=phase)
+        assert data["selected_budget"] == combined["selected_budget"]
+        assert data["pending_tasks"] == combined["pending_tasks"]
+        row = data["selected_months"][0]
+        assert (row["total_income_cents"], row["total_expense_cents"], row["result_cents"]) == (income, expense, income - expense)
+        assert detail(client, "result", phase=phase)["total_cents"] == income - expense
+        assert sum(category["total_cents"] for category in data["category_chart"]) == expense
+        other = next(category for category in data["category_chart"] if category["name"] == "Outros")
+        assert other["total_cents"] == others
+        for category in data["category_chart"]:
+            composition = detail(client, "expense", phase=phase, **category["filters"])
+            assert composition["total_cents"] == category["total_cents"]
+            assert all(item["phase"] == phase for item in composition["items"])
+    assert counts(client) == before
+
+
+def test_local_chart_variants_match_their_independent_compositions(client):
+    entry(client, total_cents=2100)
+    entry(client, request_key="other-person", responsible_id=2, total_cents=4500)
+    series(client, amount_cents=800)
+    before = counts(client)
+    response = client.get("/api/dashboard", params={
+        "month": "2026-10", "responsible_code": "self", "months": 12, "include_chart_variants": True,
+    })
+    assert response.status_code == 200, response.text
+    variants = response.json()["chart_variants"]
+    assert set(variants) == {"all", "registered", "forecast"}
+    for phase, expected in [("all", 2900), ("registered", 2100), ("forecast", 800)]:
+        rows = variants[phase]["months"]
+        assert len(rows) == 12 and rows[-1]["month"] == "2027-09-01"
+        assert rows[0]["total_expense_cents"] == expected
+        assert sum(row["total_cents"] for row in variants[phase]["categories"]) == expected
+        assert detail(client, "result", phase=phase)["total_cents"] == rows[0]["result_cents"]
+    assert counts(client) == before
+
+
+def test_card_phase_preserves_registered_credits_and_matches_details(client):
+    source, _, target = scenario(client)
+    assert apply(client, source, target).status_code == 200
+    series(client, payment_method="credit", card_id=client.card, account_id=None, amount_cents=1500)
+
+    for phase, total, credit in [("all", 7500, -4000), ("registered", 6000, -4000), ("forecast", 1500, 0)]:
+        outlook = dashboard(client, month="2026-11", phase=phase)["outlook"]
+        card = next(row for row in outlook["months"][0]["cards"] if row["card_id"] == client.card)
+        assert card["selected_plot"]["total_cents"] == total
+        assert card["selected_plot"]["plot_min_cents"] == credit
+        response = client.get("/api/dashboard/outlook/details", params={
+            "metric": "card", "month": "2026-11", "card_id": client.card, "phase": phase,
+        })
+        assert response.status_code == 200, response.text
+        composition = response.json()
+        assert composition["total_cents"] == total
+        assert sum(item["amount_cents"] for item in composition["items"] if item.get("source") == "statement_credit") == credit
+        assert all(phase == "all" or item["phase"] == phase for item in composition["items"])

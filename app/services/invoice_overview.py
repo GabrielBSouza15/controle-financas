@@ -37,7 +37,7 @@ def list_overview(engine, *, card_id=None, responsible_id=None, month_from=None,
                 "card_id":cid,"card_name":cards[cid],"reference_month":month,
                 "self_cents":0,"parents_cents":0,"statement_total_cents":0,
                 "historical_count":0,"operational_count":0,"invoice_id":None,
-                "operational_status":None,"responsible_codes":set(),
+                "operational_status":None,"due_date":None,"responsible_codes":set(),
                 "forecast_cents":0,"forecast_self_cents":0,"forecast_parents_cents":0,"forecast_count":0,
             })
         invoices = session.execute(select(Invoice,Card.name).join(Card)).all()
@@ -49,7 +49,7 @@ def list_overview(engine, *, card_id=None, responsible_id=None, month_from=None,
         for inv in invoice_summaries(session,invoices).values():
             r=group(inv["card_id"],inv["reference_month"])
             for name in ("self_cents","parents_cents","statement_total_cents"):r[name]+=inv[name]
-            r.update(invoice_id=inv["id"],operational_status=inv["status"],
+            r.update(invoice_id=inv["id"],operational_status=inv["status"],due_date=inv["due_date"],
                      operational_count=inv["active_obligation_count"])
             r["responsible_codes"].update(present.get(inv["id"],set()))
         for item in budget_rows(session):

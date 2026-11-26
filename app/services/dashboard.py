@@ -68,9 +68,9 @@ def person_budget(items, month, responsible_code):
     return row
 
 
-def category_totals(items, responsible_code):
+def category_totals(items, responsible_code, *, phase="all"):
     categories = {}
-    for item in select_items(items, "expense", responsible_code=responsible_code):
+    for item in select_items(items, "expense", responsible_code=responsible_code, phase=phase):
         key = ("history", item["history_category"]) if item.get("history_category") else ("catalog", item["category_id"])
         row = categories.setdefault(key, {
             "category_id": item["category_id"], "history_category": item.get("history_category"), "name": item["category_name"],
@@ -111,16 +111,32 @@ def category_chart(rows):
     return shown
 
 
-def summary(engine, month, months=6, chart_card_id=None, responsible_code="self", card_responsible_code="all"):
+def chart_variants(items, months, current, responsible_code):
+    """Composições dos gráficos para os filtros locais da interface."""
+    variants = {}
+    for phase in ("all", "registered", "forecast"):
+        selected = items if phase == "all" else [item for item in items if item["phase"] == phase]
+        variants[phase] = {
+            "months": [person_budget(selected, row["month"], responsible_code) for row in months],
+            "categories": category_chart(category_totals(current, responsible_code, phase=phase)),
+        }
+    return variants
+
+
+def summary(engine, month, months=6, chart_card_id=None, responsible_code="self", card_responsible_code="all", *,
+            phase="all", include_chart_variants=False):
     validate_period(months)
     if responsible_code not in {"self", "parents", "all"} or card_responsible_code not in {"self", "parents", "all"}:
         raise PersistenceValidationError("Escolha Eu, Pai/Mãe ou Todos.")
     with Session(engine) as session:
         # Todas as perspectivas desta resposta compartilham a mesma fotografia de leitura.
+        if include_chart_variants:
+            months = min(months, (9999 - month.year) * 12 + 13 - month.month)
         data = projection_in_session(session, month, months, limit=None)
         items = budget_items(session, data)
         current = [item for item in items if item["month"] == month.isoformat()]
-        category_rows = category_totals(current, responsible_code)
+        graph_items = items if phase == "all" else [item for item in items if item["phase"] == phase]
+        category_rows = category_totals(current, responsible_code, phase=phase)
         invoices = list(invoice_summaries(session, session.execute(
             select(Invoice, Card.name).join(Card).where(Invoice.reference_month == month)
             .order_by(Card.name, Invoice.id)
@@ -149,10 +165,13 @@ def summary(engine, month, months=6, chart_card_id=None, responsible_code="self"
             "month": month.isoformat(), "horizon": months,
             "pending_tasks": pending_tasks(session),
             "budget": selected, "months": data["months"],
-            "responsible_code": responsible_code,
+            "responsible_code": responsible_code, "phase": phase,
             "selected_budget": person_budget(items, month.isoformat(), responsible_code),
-            "selected_months": [person_budget(items, row["month"], responsible_code) for row in data["months"]],
-            "outlook": build_outlook(session, chart_data, chart_items, chart_card_id, income_items=items, responsible_code=card_responsible_code),
+            "selected_months": [person_budget(graph_items, row["month"], responsible_code) for row in data["months"]],
+            **({"chart_variants": chart_variants(items, data["months"], current, responsible_code)}
+               if include_chart_variants else {}),
+            "outlook": build_outlook(session, chart_data, chart_items, chart_card_id, income_items=items,
+                                     responsible_code=card_responsible_code, phase=phase),
             "categories": category_rows, "category_chart": category_chart(category_rows), "invoices": invoices, "historical_invoices": historical_invoices,
             "quality": {
                 "uncategorized_expense_items": sum(item["kind"] == "expense" and item["category_id"] is None and not item.get("history_category") for item in current),
@@ -205,7 +224,7 @@ def details_in_session(session, month, metric, *, category_id=None, history_cate
         all_items = budget_items(session, data)
         excluded = set()
         if other_categories:
-            ranked = named_categories(category_totals(all_items, responsible_code))
+            ranked = named_categories(category_totals(all_items, responsible_code, phase=phase))
             excluded = {r["name"] for r in ranked[:5]}
         items = select_items(all_items, metric,
                              category_id=category_id, history_category=history_category, uncategorized=uncategorized, phase=phase, responsible_code=responsible_code)

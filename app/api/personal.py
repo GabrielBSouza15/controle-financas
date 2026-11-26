@@ -27,8 +27,15 @@ def get_reinvestment(request:Request):
 def update_reinvestment(request:Request,payload:ReinvestmentInput):
     return personal.update_reinvestment(request.app.state.engine,payload.model_dump())
 @router.get("/flow")
-def get_flow(request:Request,date_from:CivilInput,date_to:CivilInput,limit:Annotated[int,Query(ge=1,le=100)]=50,offset:Annotated[int,Query(ge=0,le=1000000)]=0):
-    return personal.flow(request.app.state.engine,date_from,date_to,limit,offset)
+def get_flow(
+    request: Request,
+    date_from: CivilInput,
+    date_to: CivilInput,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0, le=1000000)] = 0,
+    q: Annotated[str, Query(max_length=200)] = "",
+):
+    return personal.flow(request.app.state.engine, date_from, date_to, limit, offset, q=q)
 @router.get("/bill")
 def get_bill(request:Request,card_id:Annotated[int,Query(ge=1)],month:MonthInput):
     with Session(request.app.state.engine) as session: return personal.bill_position(session,card_id,month)

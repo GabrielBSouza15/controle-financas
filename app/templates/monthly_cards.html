@@ -1,0 +1,14 @@
+{% macro monthly_cards(prefix) %}
+<section id="{{ prefix }}-monthly-cards" class="panel monthly-cards" aria-labelledby="{{ prefix }}-monthly-title">
+  <header class="monthly-header">
+    <h2 id="{{ prefix }}-monthly-title">Faturas do mês</h2>
+    <form class="monthly-filters" aria-label="Filtros das faturas do mês">
+      <label>Mês da fatura<input type="month" name="month" required></label>
+      <label>Responsável<select name="responsible_code"><option value="all">Todos</option><option value="self">Eu</option><option value="parents">Pai/Mãe</option></select></label>
+      <label>Valores<select name="phase"><option value="all">Lançados e estimados</option><option value="registered">Só lançados</option><option value="forecast">Só estimados</option></select></label>
+    </form>
+  </header>
+  <p class="monthly-message muted" role="status" hidden></p>
+  <div class="monthly-card-grid"></div>
+</section>
+{% endmacro %}

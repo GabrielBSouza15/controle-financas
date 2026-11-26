@@ -60,7 +60,7 @@ const legacyView = createLegacyView({api,notify,dateText});
 const recurrenceView = createRecurrenceView({api,notify,dateText,localDate,resolveCategoryName,showEntry:showDetails,showHistory:id=>historyView.open(id),refreshAll:refreshFinancialViews});
 const adjustmentView = createAdjustmentView({api,notify,dateText,localDate,refreshAll:refreshFinancialViews});
 const settlementView = createSettlementView({api,notify,dateText,localDate,refreshAll:refreshFinancialViews});
-const invoiceView = createInvoiceView({api, onWholePayment:row=>personalView.openBill(row), showEntry:showDetails, showHistory:id=>historyView.open(id), showOccurrence:(id,month)=>recurrenceView.openOccurrences(id,month), dateText, localDate,
+const invoiceView = createInvoiceView({api, openCard: options => dashboardView.openCard(options), onWholePayment:row=>personalView.openBill(row), showEntry:showDetails, showHistory:id=>historyView.open(id), showOccurrence:(id,month)=>recurrenceView.openOccurrences(id,month), dateText, localDate,
   onPayment:invoice=>settlementView.openEvent({kind:"invoice_payment",invoiceId:invoice.id,amount:invoice.issuer_remaining_cents,label:`${invoice.card_name} · ${dateText(invoice.closing_date)}.`}),
   onRepayment:invoice=>settlementView.openEvent({kind:"repayment",invoiceId:invoice.id,label:`Parte de Pai/Mãe em ${invoice.card_name} · ${dateText(invoice.closing_date)}.`}),
   onClose:invoice=>settlementView.openClosure(invoice)});
@@ -68,7 +68,7 @@ const invoiceView = createInvoiceView({api, onWholePayment:row=>personalView.ope
 const dashboardView = createDashboardView({api,notify,dateText,localDate,showEntry:showDetails,
   showInvoice:id=>invoiceView.open(id),showHistory:id=>historyView.open(id),showOccurrence:(id,month)=>recurrenceView.openOccurrences(id,month),showBill:row=>personalView.openBill(row)});
 
-const personalView=createPersonalView({api,localDate,dateText,notify,refreshAll:refreshFinancialViews,showEntry:showDetails,showHistory:id=>historyView.open(id),showOccurrence:(id,month)=>recurrenceView.openOccurrences(id,month)});
+const personalView=createPersonalView({api,localDate,dateText,notify,refreshAll:refreshFinancialViews});
 
 function listRecords(id, records, empty = "Nenhum cadastro ainda.") {
   const list = $(id); list.replaceChildren();
@@ -97,7 +97,7 @@ function renderCategories(c) {
 }
 async function loadCatalogs() { applyCatalogs(await api("/catalogs")); }
 function applyCatalogs(c) {
-  state.catalogs = c; historyView.updateCatalogs(c); invoiceView.updateCatalogs(c); personalView.updateCatalogs(state.catalogs); settlementView.updateCatalogs(c); adjustmentView.updateCatalogs(c); recurrenceView.updateCatalogs(c);
+  state.catalogs = c; dashboardView.updateCatalogs(c); historyView.updateCatalogs(c); invoiceView.updateCatalogs(c); personalView.updateCatalogs(state.catalogs); settlementView.updateCatalogs(c); adjustmentView.updateCatalogs(c); recurrenceView.updateCatalogs(c);
   optionList("entry-responsible", c.responsibles);
   optionList("filter-responsible", c.responsibles, "Todos");
   optionList("entry-card", c.cards.filter(card => card.active));
@@ -283,6 +283,23 @@ function bindCatalogForm(id, path, payload) {
 bindCatalogForm("setup-form", "/setup", data => ({effective_from: data.get("effective_from")}));
 bindCatalogForm("category-form", "/categories", data => ({name: data.get("name"), parent_id: data.get("parent_id") ? Number(data.get("parent_id")) : null}));
 $("setup-form").elements.effective_from.value = localDate();
+// Formulários de consulta usam o mesmo evento de envio do teclado e dos filtros.
+for (const id of ["filters", "flow-filters", "invoice-filters", "projection-filters", "occurrences-filters", "history-filters", "legacy-filters", "cash-filters"]) {
+  const form = $(id);
+  const isSearch = input => input.matches('input[type="search"]');
+  let pending;
+  form.addEventListener("change", event => {
+    if (isSearch(event.target)) return;
+    clearTimeout(pending);
+    form.requestSubmit();
+  });
+  form.addEventListener("input", event => {
+    if (!isSearch(event.target)) return;
+    clearTimeout(pending);
+    pending = setTimeout(() => form.requestSubmit(), 250);
+  });
+  for (const event of ["reset", "submit"]) form.addEventListener(event, () => clearTimeout(pending));
+}
 try { await loadCatalogs(); await loadEntries(); await dashboardView.refresh(); await personalView.loadReinvestment(); } catch (error) {notify(error.message, true);}
 
 $("edit-entry").addEventListener("click", () => {
