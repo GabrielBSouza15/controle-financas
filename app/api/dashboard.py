@@ -12,8 +12,11 @@ router = APIRouter(prefix="/api/dashboard")
 def summary(request: Request, month: MonthInput, months: Annotated[int, Query(ge=3, le=12)] = 6,
             chart_card_id: Annotated[int, Query(ge=1)] | None = None,
             responsible_code: Literal["self", "parents", "all"] = "self",
-            card_responsible_code: Literal["all", "self", "parents"] = "all"):
-    return dashboard.summary(request.app.state.engine, month, months, chart_card_id, responsible_code, card_responsible_code)
+            card_responsible_code: Literal["all", "self", "parents"] = "all",
+            phase: Literal["all", "registered", "forecast"] = "all",
+            include_chart_variants: bool = False):
+    return dashboard.summary(request.app.state.engine, month, months, chart_card_id, responsible_code,
+                             card_responsible_code, phase=phase, include_chart_variants=include_chart_variants)
 
 
 @router.get("/details")
@@ -39,10 +42,11 @@ def outlook_details(
     request: Request, month: MonthInput, metric: Literal["card", "all_cards", "card_expense", "all_expense", "all_income"],
     card_id: Annotated[int, Query(ge=1)] | None = None,
     responsible_code: Literal["all", "self", "parents"] = "all",
+    phase: Literal["all", "registered", "forecast"] = "all",
     limit: PageLimit = 50, offset: PageOffset = 0,
 ):
     from app.services.dashboard_outlook import details
-    return details(request.app.state.engine, month, metric, card_id=card_id, limit=limit, offset=offset, responsible_code=responsible_code)
+    return details(request.app.state.engine, month, metric, card_id=card_id, limit=limit, offset=offset, responsible_code=responsible_code, phase=phase)
 
 
 @router.get("/expenses.pdf")
