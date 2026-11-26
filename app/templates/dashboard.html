@@ -1,6 +1,17 @@
+{% from "monthly_cards.html" import monthly_cards %}
+{% macro chart_filters(name, horizon=false, values=false) %}
+<div class="chart-filters">
+  {% if horizon %}<label>Período<select id="{{ name }}-horizon"><option value="3">3 meses</option><option value="6" selected>6 meses</option><option value="12">12 meses</option></select></label>{% endif %}
+  <label>Valores<select id="{{ name }}-phase"><option value="all">Lançados e estimados</option><option value="registered">Só lançados</option><option value="forecast">Só estimados</option></select></label>
+  {% if values %}<label class="chart-label-toggle"><input id="{{ name }}-labels" type="checkbox" checked> Mostrar valores</label>{% endif %}
+</div>
+{% endmacro %}
 <section id="dashboard-view">
 <div class="dashboard-top"><header class="page-header"><div><h1>Visão geral</h1><p>Veja seu mês e planeje o que vem pela frente.</p></div></header>
-<form id="dashboard-filters" class="panel dashboard-filters"><label>Ver de<select name="responsible_code" id="dashboard-person"><option value="self">Eu</option><option value="parents">Pai/Mãe</option><option value="all">Todos</option></select></label><label>Mês<input type="month" name="month" required></label><label>Ver os próximos<select name="months"><option value="3">3 meses</option><option value="6" selected>6 meses</option><option value="12">12 meses</option></select></label><button class="primary" type="submit">Atualizar</button></form></div>
+<form id="dashboard-filters" class="panel dashboard-filters">
+<label>Mês do orçamento<input type="month" name="month" required></label>
+<label>Orçamento de<select name="responsible_code" id="dashboard-person"><option value="self">Eu</option><option value="parents">Pai/Mãe</option><option value="all">Todos</option></select></label>
+</form></div>
 <p id="dashboard-loading" class="help" role="status" aria-live="polite" hidden>Consultando os registros…</p>
 <p id="dashboard-error" class="form-error" role="alert" hidden></p>
 <div id="dashboard-content" hidden>
@@ -13,31 +24,31 @@
 <section class="dashboard-kpi"><h2>Valor a ser reinvestido</h2><strong id="reinvestment-value" role="button" tabindex="0" title="Adicionar ou subtrair do valor a ser reinvestido">R$ 0,00</strong><p>Controle manual, independente do período.</p><button id="edit-reinvestment" class="link-button">Adicionar ou subtrair valor</button></section>
 </div>
 <p class="help">Os três primeiros quadros seguem o responsável selecionado. O reinvestimento é independente. “Já lançado” inclui valores pagos e não pagos; estimativas ainda precisam de confirmação.</p>
-<section class="panel" aria-labelledby="dashboard-tasks-title">
-<div class="section-heading"><div><h2 id="dashboard-tasks-title">Contas a cadastrar e pagar</h2><p id="dashboard-tasks-period" class="help"></p></div><span id="dashboard-tasks-count" class="muted"></span></div>
-<p class="help">Mês atual e seguinte, de Eu e Pai/Mãe, independente dos filtros dos gráficos. Confirme as recorrências que aconteceram e registre os pagamentos efetivos das faturas. Estimativas não estão incluídas no valor a pagar ao cartão.</p>
-<p id="dashboard-tasks-empty" class="empty" hidden>Nenhuma recorrência a confirmar ou fatura com pagamento pendente nesses meses.</p>
-<div class="table-wrap" id="dashboard-tasks-table"><table><thead><tr><th>Mês / data prevista</th><th>Conta</th><th>Situação</th><th class="number">Valor</th><th>Ação</th></tr></thead><tbody id="dashboard-tasks-rows"></tbody></table></div>
-</section>
+{{ monthly_cards("dashboard") }}
+<details class="panel dashboard-tasks">
+  <summary>
+    <span class="task-summary-label">Contas a cadastrar e pagar</span>
+    <span id="dashboard-tasks-period" class="task-period"></span>
+    <span id="dashboard-tasks-count" class="task-count"></span>
+  </summary>
+  <div class="task-body">
+    <p id="dashboard-tasks-empty" class="muted" hidden>Nenhuma pendência neste período.</p>
+    <ul id="dashboard-tasks-rows" class="task-list"></ul>
+  </div>
+</details>
 <section class="panel budget-panel" aria-labelledby="dashboard-chart-title">
-<div class="section-heading"><div><h2 id="dashboard-chart-title">Receitas e despesas previstas</h2><p class="help"><span id="dashboard-chart-person">Eu</span> · <span id="dashboard-range"></span> · todos os meios de pagamento</p></div><label class="chart-label-toggle"><input id="outlook-labels" type="checkbox" checked> Mostrar valores</label></div>
-<div class="budget-legend"><span><i class="swatch-income"></i>Receitas</span><span><i class="swatch-expense"></i>Despesas</span><span><i class="swatch-forecast"></i>Trecho listrado: estimativa</span></div>
+<div class="section-heading chart-heading"><div><h2 id="dashboard-chart-title">Receitas e despesas</h2><p class="chart-context"><span id="dashboard-chart-person"></span> · <span id="dashboard-range"></span></p></div>
+{{ chart_filters("budget", horizon=true, values=true) }}</div>
+<div class="budget-legend"><span><i class="swatch-income"></i>Receitas</span><span><i class="swatch-expense"></i>Despesas</span><span id="budget-forecast-legend"><i class="swatch-forecast"></i>Trecho listrado: estimativa</span></div>
 <div id="budget-month-chart" class="chart-viewport"></div>
 <div class="chart-pager"><span id="budget-page-label" role="status"></span><div><button id="budget-prev" class="secondary" type="button" aria-label="Mostrar meses anteriores nos gráficos">Anterior</button><button id="budget-next" class="secondary" type="button" aria-label="Mostrar próximos meses nos gráficos">Próximos</button></div></div>
 <p class="help">Clique em uma coluna para ver a composição. Lançado não significa pago; estimativa ainda pode mudar.</p>
-<details class="outlook-values"><summary>Ver tabela de receitas e despesas</summary><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Receitas lançadas</th><th>Receitas estimadas</th><th>Despesas lançadas</th><th>Despesas estimadas</th><th>Resultado previsto</th></tr></thead><tbody id="budget-month-values"></tbody></table></div></details>
+<details class="outlook-values"><summary>Ver tabela de receitas e despesas</summary><div class="table-wrap"><table><thead><tr><th>Mês</th><th data-budget-phase="registered">Receitas lançadas</th><th data-budget-phase="forecast">Receitas estimadas</th><th data-budget-phase="registered">Despesas lançadas</th><th data-budget-phase="forecast">Despesas estimadas</th><th>Resultado</th></tr></thead><tbody id="budget-month-values"></tbody></table></div></details>
 </section>
 <div class="budget-analysis-grid">
-<section class="panel" aria-labelledby="budget-result-title"><div class="section-heading"><h2 id="budget-result-title">Sobra ou falta por mês</h2></div><p class="help">Receitas menos despesas do responsável selecionado. Cada mês é independente; não é saldo bancário.</p><div id="budget-result-chart" class="chart-viewport"></div><div class="chart-pager"><span id="result-page-label" role="status"></span><div><button id="result-prev" class="secondary" type="button" aria-label="Meses anteriores no resultado">Anterior</button><button id="result-next" class="secondary" type="button" aria-label="Próximos meses no resultado">Próximos</button></div></div><p id="budget-result-note" class="help"></p><details class="outlook-values"><summary>Ver tabela do resultado</summary><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Situação prevista</th><th>Valor</th></tr></thead><tbody id="budget-result-values"></tbody></table></div></details></section>
-<section class="panel" aria-labelledby="dashboard-category-title"><div class="section-heading"><h2 id="dashboard-category-title">Despesas por categoria</h2></div><p class="help">Mês selecionado · principais categorias, Outros e Sem categoria. Inclui estimativas.</p><ul id="dashboard-categories" class="category-bars"></ul></section>
+<section class="panel" aria-labelledby="budget-result-title"><div class="section-heading chart-heading"><h2 id="budget-result-title">Sobra ou falta por mês</h2>{{ chart_filters("result", horizon=true, values=true) }}</div><p class="help">Receitas menos despesas do responsável selecionado. Cada mês é independente; não é saldo bancário.</p><div id="budget-result-chart" class="chart-viewport"></div><div class="chart-pager"><span id="result-page-label" role="status"></span><div><button id="result-prev" class="secondary" type="button" aria-label="Meses anteriores no resultado">Anterior</button><button id="result-next" class="secondary" type="button" aria-label="Próximos meses no resultado">Próximos</button></div></div><p id="budget-result-note" class="help"></p><details class="outlook-values"><summary>Ver tabela do resultado</summary><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Situação</th><th>Valor</th></tr></thead><tbody id="budget-result-values"></tbody></table></div></details></section>
+<section class="panel" aria-labelledby="dashboard-category-title"><div class="section-heading chart-heading"><h2 id="dashboard-category-title">Despesas por categoria</h2>{{ chart_filters("category") }}</div><p class="help">Mês selecionado · principais categorias, Outros e Sem categoria.</p><ul id="dashboard-categories" class="category-bars"></ul></section>
 </div>
-<section class="panel outlook-panel" aria-labelledby="outlook-card-title"><div class="section-heading"><div><h2 id="outlook-card-title">Faturas previstas por cartão</h2><p class="help">Nubank e Mercado Pago/Livre lado a lado. O filtro abaixo seleciona os responsáveis apenas neste gráfico. Pagamentos não reduzem estas colunas.</p></div><label>Ver de<select id="outlook-card-filter"><option value="all">Todos</option><option value="self">Eu</option><option value="parents">Pai/Mãe</option></select></label></div>
-<div class="budget-legend"><span><i class="swatch-nubank"></i>Nubank</span><span><i class="swatch-mercado"></i>Mercado Pago/Livre</span><span><i class="swatch-forecast"></i>Estimativa</span><span><i class="swatch-credit"></i>Crédito entre faturas</span></div>
-<p id="outlook-no-cards" class="help" hidden>Cadastre um cartão para ver suas faturas.</p><div id="outlook-card-chart" class="card-chart-grid"></div>
-<div class="chart-pager"><span id="card-page-label" role="status"></span><div><button id="card-prev" class="secondary" type="button">Meses anteriores</button><button id="card-next" class="secondary" type="button">Próximos meses</button></div></div>
-<p id="outlook-credit-note" class="help" hidden>Crédito cinza tem sinal próprio. As partes de Eu/Pai-Mãe representam as compras e podem diferir do total cobrado após compensações.</p><p class="help">Planilha: ciclos simulados sujeitos à conferência. A escala é a mesma entre os bancos.</p>
-<details class="outlook-values"><summary>Ver tabela de faturas</summary><div class="table-wrap"><table><thead><tr><th>Cartão / mês</th><th>Lançado (com créditos)</th><th>Estimado</th><th>Créditos incluídos</th><th>Total / parte prevista</th></tr></thead><tbody id="outlook-card-values"></tbody></table></div></details>
-</section>
 <details class="dashboard-explainer"><summary>Como entender estes valores</summary><p class="help">Orçamento usa o mês da fatura no cartão e o mês planejado nos demais meios. Despesas novas de Pai/Mãe com repasse pendente podem entrar no mês seguinte. Histórico e novos lançamentos entram uma vez; o ensaio antigo fica de fora. O reinvestimento é um controle manual independente do período. Nenhuma previsão confirma pagamento ou recebimento.</p></details>
 <details class="dashboard-more"><summary>Pagamentos e conferência das faturas do mês</summary><section class="panel"><h2>Dinheiro movimentado nas minhas contas</h2><strong id="dashboard-cash"></strong><p id="dashboard-cash-parts"></p><p class="help">Movimentos efetivos nas contas de Eu, independentemente do responsável pela despesa. Não representa o saldo bancário de Pai/Mãe nem inclui saldo inicial.</p><button class="link-button" data-dashboard-metric="cash">Ver dinheiro movimentado</button></section><section class="panel"><div class="section-heading"><h2>Faturas dos novos lançamentos</h2><span id="dashboard-invoice-count" class="muted"></span></div><p class="help">Total da fatura considera créditos entre ciclos. Partes por responsável representam os compromissos daquele ciclo; podem diferir do total cobrado. Crédito disponível não é entrada de caixa.</p><p id="dashboard-no-invoices" class="muted" hidden>Nenhuma fatura cadastrada neste ciclo. Recorrências ainda previstas aparecem no orçamento, sem criar fatura.</p><div class="table-wrap" id="dashboard-invoice-wrap"><table><thead><tr><th>Cartão / estado</th><th class="number">Total da fatura</th><th class="number">Parte de Eu</th><th class="number">Parte do grupo</th><th class="number">Pago ao banco</th><th class="number">Restante / crédito</th><th>Conferência</th><th><span class="sr-only">Detalhes</span></th></tr></thead><tbody id="dashboard-invoices"></tbody></table></div></section>
 <section class="panel" id="dashboard-history-wrap" hidden><h2>Ciclos históricos do mês</h2><p class="help">Soma das parcelas observadas, sem contrato presumido. Ciclos simulados ainda exigem conferência com o banco. A coluna Pago antigo não informa data. Estes valores já estão no orçamento acima; não os some novamente às despesas. Novos compromissos do mesmo cartão aparecem nas faturas operacionais, em separado.</p><div class="table-wrap"><table><thead><tr><th>Cartão / origem</th><th>Total observado</th><th>Eu</th><th>Pai/Mãe</th><th>Pago antigo sem data</th><th>Novos valores vinculados</th><th>Pendente</th><th>Conferência</th></tr></thead><tbody id="dashboard-history-cycles"></tbody></table></div></section>
