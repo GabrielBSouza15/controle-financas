@@ -12,13 +12,19 @@ from .catalogs import ConflictError,NotFoundError
 def active():
  return HistoryEvent.posted.is_(True)&~HistoryEvent.id.in_(select(HistoryEventReversal.event_id))
 
-def totals(session):
+def totals(session, *, include_payment_dates=False):
  from .history_state import records_state,links
  result={identity:{"new_payment_cents":0,"known_parents_covered_cents":0,"effective_amount_cents":r["effective_cents"],"baseline_cents":r["baseline_cents"],"current_cycle":r["current_cycle"]} for identity,r in records_state(session).items()}
+ dates = dict(session.execute(select(HistoryEvent.id, HistoryEvent.occurred_on).where(
+  HistoryEvent.kind.in_(("expense_payment", "income_receipt")))).all()) if include_payment_dates else {}
  for link in links(session):
   row=result[link["record_id"]];amount=link["remaining_cents"]
   if link["event_kind"]!="repayment":row["new_payment_cents"]+=amount
   if link["event_kind"]=="repayment" or link["payer_code"]=="parents":row["known_parents_covered_cents"]+=amount
+  if amount > 0 and link["event_id"] in dates:
+   day = dates[link["event_id"]]
+   by_date = row.setdefault("payments_by_date", {})
+   by_date[day] = by_date.get(day, 0) + amount
  from app.persistence.models import BillPaymentMark
  for mark in session.scalars(select(BillPaymentMark).where(BillPaymentMark.record_id.is_not(None))):
   result[mark.record_id]["new_payment_cents"]+=mark.amount_cents

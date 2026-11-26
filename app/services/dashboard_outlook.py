@@ -57,10 +57,10 @@ def card_plot(items, credits):
     return dict(segments=segments, total_cents=total, plot_min_cents=min(0, credits), plot_max_cents=end)
 
 
-def build_outlook(session, data, items, card_id=None, *, income_items=None, responsible_code="all"):
+def build_outlook(session, data, items, card_id=None, *, income_items=None, responsible_code="all", phase="all"):
     from datetime import date
     refs = [date.fromisoformat(row["month"]) for row in data["months"]]
-    adjustments = card_adjustments(session, refs)
+    adjustments = [] if phase == "forecast" else card_adjustments(session, refs)
     cards = [{"id": card.id, "name": card.name} for card in session.scalars(select(Card).order_by(Card.id))]
     available_cards = cards
     if card_id is not None:
@@ -68,6 +68,9 @@ def build_outlook(session, data, items, card_id=None, *, income_items=None, resp
             raise PersistenceValidationError("Cartão não encontrado.")
         cards=[c for c in cards if c["id"]==card_id]
     income_items = items if income_items is None else income_items
+    if phase != "all":
+        items = [item for item in items if item["phase"] == phase]
+        income_items = [item for item in income_items if item["phase"] == phase]
     months = []
     for source in data["months"]:
         ref = source["month"]
@@ -77,11 +80,11 @@ def build_outlook(session, data, items, card_id=None, *, income_items=None, resp
         segments = []
         start = 0
         for person in ("self", "parents"):
-            for phase in ("registered", "forecast"):
+            for item_phase in ("registered", "forecast"):
                 value = safe(sum(item["amount_cents"] for item in selected
-                                 if item["responsible_code"] == person and item["phase"] == phase))
+                                 if item["responsible_code"] == person and item["phase"] == item_phase))
                 end = safe(start + value)
-                segments.append({"responsible_code": person, "phase": phase, "amount_cents": value,
+                segments.append({"responsible_code": person, "phase": item_phase, "amount_cents": value,
                                  "start_cents": start, "end_cents": end})
                 start = end
         card_rows = []
@@ -108,18 +111,19 @@ def build_outlook(session, data, items, card_id=None, *, income_items=None, resp
                 "historical_items": sum(item.get("source") == "history" for item in own),
                 "missing_rule_items": sum(bool(item.get("missing_rule")) for item in own),
             })
-        assert start == source["all_expense_cents"]
+        if phase == "all":
+            assert start == source["all_expense_cents"]
         months.append({
             "card_totals":graph_totals(*(sum(c[key] for c in card_rows) for key in ("self_cents","parents_cents","credits_cents"))),
             "expense_totals":graph_totals(*(sum(s["amount_cents"] for s in segments if s["responsible_code"]==person) for person in ("self","parents"))),
             "income_totals": income_totals,
             "month": ref, "all_expense_cents": start, "expense_segments": segments, "cards": card_rows})
-    return {"selected_responsible_code": responsible_code, "cards": cards, "available_cards":available_cards,"selected_card_id":card_id, "months": months,
+    return {"phase": phase, "selected_responsible_code": responsible_code, "cards": cards, "available_cards":available_cards,"selected_card_id":card_id, "months": months,
             "scope": "all_responsibles_by_budget_cycle_not_cash_or_unpaid_balance",
-            "includes_monthly_forecasts": True, "income_scope": "all_responsibles_all_methods_independent_of_card_filter", "historical_cycles_are_estimates": True}
+            "includes_monthly_forecasts": phase != "registered", "income_scope": "all_responsibles_all_methods_independent_of_card_filter", "historical_cycles_are_estimates": True}
 
 
-def details(engine, month, metric, *, card_id=None, limit=50, offset=0, responsible_code="all"):
+def details(engine, month, metric, *, card_id=None, limit=50, offset=0, responsible_code="all", phase="all"):
     from .dashboard import budget_items
     if (metric in {"card","card_expense"}) != (card_id is not None):
         raise PersistenceValidationError("Escolha um cartão apenas para os detalhes das faturas.")
@@ -133,12 +137,13 @@ def details(engine, month, metric, *, card_id=None, limit=50, offset=0, responsi
                  for item in budget_items(session, data) if item["kind"] == ("income" if metric == "all_income" else "expense")
                  and (card_id is None or item.get("card_id") == card_id)
                  and (responsible_code == "all" or item["responsible_code"] == responsible_code)
+                 and (phase == "all" or item["phase"] == phase)
                  and (metric != "all_cards" or item.get("card_id") is not None)]
-        if metric in {"card","all_cards"} and responsible_code == "all":
+        if metric in {"card","all_cards"} and responsible_code == "all" and phase != "forecast":
             items.extend(item for item in card_adjustments(session, [month]) if card_id is None or item["card_id"] == card_id)
         total = safe(sum(item["contribution_cents"] for item in items))
         from .projections import budget_order
         items.sort(key=budget_order)
-        return {"month": month.isoformat(), "metric": metric, "card_id": card_id, "responsible_code": responsible_code,
+        return {"month": month.isoformat(), "metric": metric, "card_id": card_id, "responsible_code": responsible_code, "phase": phase,
                 "total_cents": total, "total": len(items), "limit": limit, "offset": offset,
                 "items": items[offset:offset + limit]}

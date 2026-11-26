@@ -19,7 +19,7 @@ def budget_order(row):
             row.get("description") or "")
 
 
-def projection_in_session(session,month_from,months,*,card_id=None,responsible_id=None,limit=100,offset=0):
+def projection_in_session(session,month_from,months,*,card_id=None,responsible_id=None,limit=100,offset=0,all_registered_items=False):
     refs=[add_months(month_from,i) for i in range(months)]
     result={ref:{"month":ref.isoformat(),"registered_expense_cents":0,"registered_self_expense_cents":0,
         "registered_self_income_cents":0,"forecast_expense_cents":0,"forecast_self_expense_cents":0,
@@ -28,15 +28,16 @@ def projection_in_session(session,month_from,months,*,card_id=None,responsible_i
     from .parent_budget import choices, budget_month
     repayment_choices=choices(session)
     def include(month,kind,person,amount,phase,**extra):
-        if month not in result:return
+        if month not in result and not (all_registered_items and phase == "registered"):return
         if card_id is not None and extra.get("card_id")!=card_id:return
         if responsible_id is not None and extra.get("responsible_id")!=responsible_id:return
-        row=result[month]
-        if kind=="expense":
-            row[f"{phase}_expense_cents"]+=amount
-            if person=="self":row[f"{phase}_self_expense_cents"]+=amount
-            else:row["parents_expense_cents"]+=amount
-        elif person=="self":row[f"{phase}_self_income_cents"]+=amount
+        if month in result:
+            row=result[month]
+            if kind=="expense":
+                row[f"{phase}_expense_cents"]+=amount
+                if person=="self":row[f"{phase}_self_expense_cents"]+=amount
+                else:row["parents_expense_cents"]+=amount
+            elif person=="self":row[f"{phase}_self_income_cents"]+=amount
         items.append({"month":month.isoformat(),"kind":kind,"responsible_code":person,"amount_cents":safe(amount),
             "phase":phase,**extra})
     parts=session.execute(select(Obligation,Entry,Responsible.code,Invoice.reference_month)

@@ -120,39 +120,81 @@ def pay_bill(engine, data):
         session.flush()
         return result
 
-def flow(engine, date_from, date_to, limit=50, offset=0):
+def flow(engine, date_from, date_to, limit=50, offset=0, *, q=""):
     from .projections import projection_in_session
     from .dashboard import budget_items
     from .history_events import totals, position
     from .history_candidate import history_rows
+    from .legacy_reader import normalized
     if date_to < date_from or (date_to-date_from).days > 3660:
         raise PersistenceValidationError("Escolha um período válido de até dez anos.")
     count=(date_to.year-date_from.year)*12+date_to.month-date_from.month+1
+    search = normalized(q)
+    start, end = date_from.isoformat(), date_to.isoformat()
     with Session(engine) as session:
-        data=projection_in_session(session,date_from.replace(day=1),count,limit=None)
+        data=projection_in_session(session,date_from.replace(day=1),count,limit=None,all_registered_items=True)
         items=budget_items(session,data)
-        paid=allocation_totals(session,[i["obligation_id"] for i in items if i.get("obligation_id")])
-        usage=totals(session); historic={r.id:r for r in history_rows(session)}
+        paid=allocation_totals(session,[i["obligation_id"] for i in items if i.get("obligation_id")],include_payment_dates=True)
+        usage=totals(session,include_payment_dates=True); historic={r.id:r for r in history_rows(session)}
         from app.persistence.models import BillPaymentMark
         marks = list(session.scalars(select(BillPaymentMark)))
         marked_parts = {m.obligation_id:m for m in marks if m.obligation_id}
         marked_history = {m.record_id:m for m in marks if m.record_id}
         result=[]
         for item in items:
-            # Cartão segue o ciclo; sem cartão segue a data prevista original.
-            day=item["month"] if item.get("card_id") else item["scheduled_on"]
-            if not date_from.isoformat() <= day <= date_to.isoformat(): continue
+            if search and search not in normalized(item["description"]):
+                continue
+            is_card = item.get("card_id") is not None
+            day = item["month"] if is_card else item["scheduled_on"]
+            if is_card and not start[:7] <= day[:7] <= end[:7]:
+                continue
             pending=item["amount_cents"]; status="Previsto"
+            payments = {}
+            undated = 0
             if item["phase"] == "registered":
                 if item.get("history_record_id"):
                     pos=position(historic[item["history_record_id"]],usage); pending=pos["pending_cents"]
                     status="Pago sem data (planilha)" if pos["payment_state"]=="paid_undated" else "Pago" if pending==0 else "Parcial" if pending<item["amount_cents"] else "Pendente"
+                    payments = pos.get("payments_by_date", {})
+                    undated = pos["baseline_cents"]
                 else:
                     p=paid[item["obligation_id"]]; pending=max(0,item["amount_cents"]-p["payment_cents"]-p["credit_applied_cents"])
                     status="Pago" if pending==0 else "Parcial" if pending<item["amount_cents"] else "Pendente"
+                    payments = p.get("payments_by_date", {})
+            if not is_card and payments:
+                # A linha do compromisso é distribuída entre quitações e restante.
+                # Ajustes podem reduzir o valor exibido, sem reescrever o pagamento.
+                applicable = max(0, item["amount_cents"] - pending - undated)
+                remaining = item["amount_cents"]
+                for payment_date, amount in sorted(payments.items()):
+                    amount = min(amount, applicable)
+                    applicable -= amount
+                    remaining -= amount
+                    effective_day = payment_date.isoformat()
+                    if amount and start <= effective_day <= end:
+                        result.append(dict(item, date=effective_day, effective_on=effective_day,
+                                           amount_cents=safe(amount), pending_cents=0, payment_status="Pago"))
+                if not remaining:
+                    continue
+                item = dict(item, amount_cents=safe(remaining))
+                if remaining == pending:
+                    status = "Pendente"
+                elif not pending and undated:
+                    status = "Pago sem data (planilha)"
+            if not is_card and not start <= day <= end:
+                continue
             mark = marked_history.get(item.get("history_record_id")) if item.get("history_record_id") else marked_parts.get(item.get("obligation_id"))
             if mark:
                 status += " · sem conta em " + mark.occurred_on.strftime("%d/%m/%Y")
             result.append(dict(item,date=day,payment_status=status,pending_cents=safe(pending)))
         result.sort(key=lambda i:(i["date"],i["scheduled_on"],i.get("history_record_id") or i.get("obligation_id") or i.get("series_id") or 0), reverse=True)
-        return dict(items=result[offset:offset+limit],total=len(result),limit=limit,offset=offset)
+        page = result[offset:offset + limit]
+        entry_ids = {row["entry_id"] for row in page if row.get("entry_id") and row.get("card_id")}
+        if entry_ids:
+            purchase_dates = dict(session.execute(
+                select(Entry.id, Entry.occurred_on).where(Entry.id.in_(entry_ids))
+            ).all())
+            for row in page:
+                if row.get("card_id") and row.get("entry_id"):
+                    row["purchase_on"] = purchase_dates[row["entry_id"]].isoformat()
+        return dict(items=page, total=len(result), limit=limit, offset=offset)
