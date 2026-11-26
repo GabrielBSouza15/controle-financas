@@ -1,5 +1,5 @@
 import {formatCents, formatSignedCents} from "/static/money.mjs";
-import {createCardCharts} from "/static/outlook.js";
+import {createMonthlyCards} from "/static/monthly_cards.js";
 import {createBudgetCharts} from "/static/budget_charts.js";
 import {widthPercent} from "/static/dashboard_chart.mjs";
 
@@ -18,17 +18,19 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
     element.addEventListener("click", () => Promise.resolve(fn()).catch(error => notify(error.message, true))); parent.append(element); return element;
   }
   function split(registered, forecast) {return `${formatCents(registered)} já lançados · ${formatCents(forecast)} em estimativas`;}
-  const budgetCharts=createBudgetCharts((metric,month,filters={})=>openDetails(metric,month,filters));
-  const cardCharts=createCardCharts((metric,month,filters,title)=>openDetails(metric,month,filters,title));
+  const phaseNames = {all: "Lançados e estimados", registered: "Só lançados", forecast: "Só estimados"};
+  const budgetCharts = createBudgetCharts(openDetails);
+  const cards = createMonthlyCards($("dashboard-monthly-cards"), {api, localDate, dateText, open: openCard});
+  let chartData;
+
+  function openCard({card, month, person, phase}) {
+    return openDetails("card", month, {card_id: card.id, responsible_code: person, phase}, card.name);
+  }
   function render(data) {
-    if (!data.selected_budget || !data.selected_months) throw new Error("Para carregar a atualização, encerre a aplicação com Ctrl+C no terminal e abra novamente pelo ícone Controle de finanças.");
+    if (!data.selected_budget || !data.chart_variants) throw new Error("Para carregar a atualização, encerre a aplicação com Ctrl+C no terminal e abra novamente pelo ícone Controle de finanças.");
     const row = data.selected_budget; state.month = data.month.slice(0,7); state.responsible = data.responsible_code;
-    const person = state.responsible === "all" ? "Todos" : state.responsible === "parents" ? "Pai/Mãe" : "Eu";
     $("dashboard-expense-title").textContent = state.responsible === "all" ? "Despesas previstas de todos" : state.responsible === "parents" ? "Despesas previstas de Pai/Mãe" : "Minhas despesas previstas";
     $("dashboard-income-title").textContent = state.responsible === "all" ? "Receitas previstas de todos" : state.responsible === "parents" ? "Receitas previstas de Pai/Mãe" : "Minhas receitas previstas";
-    $("dashboard-chart-title").textContent = `Receitas e despesas previstas · ${person}`;
-    $("dashboard-chart-person").textContent = person;
-    $("dashboard-category-title").textContent = `Despesas por categoria · ${person}`;
     $("dashboard-expense").textContent = formatCents(row.total_expense_cents);
     $("dashboard-income").textContent = formatCents(row.total_income_cents);
     $("dashboard-result").textContent = formatSignedCents(row.result_cents);
@@ -40,42 +42,31 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
     $("dashboard-income-parts").textContent = split(row.registered_income_cents, row.forecast_income_cents);
     $("dashboard-cash-parts").textContent = `${formatCents(data.budget.cash_in_cents)} de entradas · ${formatCents(data.budget.cash_out_cents)} de saídas efetivas. Sem saldo inicial.`;
     $("dashboard-empty").hidden = !data.empty;
-    $("dashboard-range").textContent = `${monthText(data.months[0].month)} a ${monthText(data.months.at(-1).month)}`;
     const tasks = data.pending_tasks;
     $("dashboard-tasks-period").textContent = `${monthText(tasks.month_from)} a ${monthText(tasks.month_to)}`;
-    $("dashboard-tasks-count").textContent = `${tasks.count} ${tasks.count === 1 ? "item" : "itens"}`;
+    $("dashboard-tasks-count").textContent = `${tasks.count} ${tasks.count === 1 ? "pendência" : "pendências"}`;
     $("dashboard-tasks-empty").hidden = tasks.count > 0;
-    $("dashboard-tasks-table").hidden = tasks.count === 0;
-    $("dashboard-tasks-rows").replaceChildren();
+    const list = $("dashboard-tasks-rows"), rows = document.createDocumentFragment();
     for (const item of tasks.items) {
-      const tr = document.createElement("tr"), recurring = item.kind === "recurrence";
-      cell(tr, recurring ? dateText(item.scheduled_on) : monthText(item.reference_month));
-      cell(tr, recurring ? `${item.description} · ${item.responsible_code === "parents" ? "Pai/Mãe" : "Eu"}${item.card_name ? " · " + item.card_name : ""}` : item.card_name);
-      cell(tr, recurring ? (item.entry_kind === "income" ? "Receita prevista a confirmar" : "Despesa prevista a confirmar") : "Fatura com pagamento pendente");
-      cell(tr, formatCents(item.amount_cents), "number");
-      button(cell(tr, ""), recurring ? "Ver previsão" : "Registrar pagamento", () => recurring ? showOccurrence(item.series_id, item.reference_month.slice(0,7)) : showBill(item));
-      $("dashboard-tasks-rows").append(tr);
+      const recurring = item.kind === "recurrence";
+      const row = document.createElement("li");
+      const identity = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = item.description;
+      const note = document.createElement("small");
+      const status = recurring ? item.entry_kind === "income" ? "Receita a confirmar" : "Despesa a confirmar" : "Fatura a pagar";
+      const day = recurring ? dateText(item.scheduled_on) : monthText(item.reference_month);
+      const person = item.responsible_code === "parents" ? "Pai/Mãe" : "Eu";
+      note.textContent = recurring ? [day, status, person, item.card_name].filter(Boolean).join(" · ") : `${day} · ${status}`;
+      identity.append(name, note);
+      const amount = document.createElement("span");
+      amount.className = "task-amount";
+      amount.textContent = formatCents(item.amount_cents);
+      row.append(identity, amount);
+      button(row, recurring ? "Ver previsão" : "Registrar pagamento", () => recurring ? showOccurrence(item.series_id, item.reference_month.slice(0,7)) : showBill(item));
+      rows.append(row);
     }
-    budgetCharts.render(data);
-    state.outlook = data.outlook;
-    cardCharts.render(data.outlook);
-    $("dashboard-categories").replaceChildren();
-    for (const category of data.category_chart) {
-      const li = document.createElement("li");
-      const open = button(li, "", () => openDetails("expense", state.month, category.filters, category.name));
-      open.className = "dashboard-category-button";
-      const name = document.createElement("span"); name.textContent = category.name;
-      const value = document.createElement("strong"); value.textContent = formatCents(category.total_cents); open.append(name, value);
-      const share=document.createElement("span");share.className="category-share";share.textContent=`${Math.floor(category.share_basis_points/100)},${String(category.share_basis_points%100).padStart(2,"0")}% do mês`;open.append(share);
-      const track = document.createElement("div"); track.className = "dashboard-track";
-      for (const phase of ["registered", "forecast"]) {
-        const segment = document.createElement("span"); segment.className = `dashboard-segment expense ${phase}`;
-        segment.style.width = widthPercent(category[`${phase}_cents`], row.total_expense_cents); track.append(segment);
-      }
-      const sub = document.createElement("small"); sub.textContent = split(category.registered_cents, category.forecast_cents);
-      li.append(track, sub); $("dashboard-categories").append(li);
-    }
-    if (!data.categories.length) {const li = document.createElement("li"); li.textContent = "Sem despesas para a seleção neste mês."; $("dashboard-categories").append(li);}
+    list.replaceChildren(rows);
     $("dashboard-invoices").replaceChildren();
     for (const invoice of data.invoices) {
       const tr = document.createElement("tr"), name = cell(tr, invoice.card_name);
@@ -106,23 +97,67 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
       ...(!q.forecast_items && !q.historical_items && !q.uncategorized_expense_items && !q.missing_description_items && !q.invoice_ids_needing_review.length && !q.missing_card_rule_items ? ["Nenhum aviso nos registros deste mês."] : []),
     ]) {const li = document.createElement("li"); li.textContent = text; $("dashboard-quality").append(li);}
   }
-  async function refresh() {
+  function renderCategories() {
+    if (!chartData) return;
+    const {month: ref, responsible_code} = chartData;
+    const month = ref.slice(0,7), phase = $("category-phase").value;
+    const {categories, months} = chartData.variants[phase];
+    $("dashboard-categories").replaceChildren();
+    const visiblePhases = phase === "all" ? ["registered", "forecast"] : [phase];
+    for (const category of categories) {
+      const li = document.createElement("li");
+      const open = button(li, "", () => openDetails("expense", month, {...category.filters, phase, responsible_code}, category.name));
+      open.className = "dashboard-category-button";
+      const name = document.createElement("span"); name.textContent = category.name;
+      const value = document.createElement("strong"); value.textContent = formatCents(category.total_cents); open.append(name, value);
+      const share=document.createElement("span");share.className="category-share";share.textContent=`${Math.floor(category.share_basis_points/100)},${String(category.share_basis_points%100).padStart(2,"0")}% do mês`;open.append(share);
+      const track = document.createElement("div"); track.className = "dashboard-track";
+      for (const itemPhase of visiblePhases) {
+        const segment = document.createElement("span"); segment.className = `dashboard-segment expense ${itemPhase}`;
+        segment.style.width = widthPercent(category[`${itemPhase}_cents`], months[0].total_expense_cents); track.append(segment);
+      }
+      li.append(track);
+      if (phase === "all") {
+        const sub = document.createElement("small");
+        sub.textContent = split(category.registered_cents, category.forecast_cents);
+        li.append(sub);
+      }
+      $("dashboard-categories").append(li);
+    }
+    if (!categories.length) {const li = document.createElement("li"); li.textContent = "Sem despesas para a seleção neste mês."; $("dashboard-categories").append(li);}
+  }
+  async function refreshBudget() {
+    if (!$("dashboard-filters").checkValidity()) return;
     const sequence = ++state.sequence;
-    $("dashboard-loading").hidden = false; $("dashboard-content").hidden = true; $("dashboard-error").hidden = true;
+    $("dashboard-loading").hidden = false;
+    $("dashboard-error").hidden = true;
+    const params = new URLSearchParams(new FormData($("dashboard-filters")));
+    params.set("months", "12");
+    params.set("include_chart_variants", "true");
     try {
-      const params = new URLSearchParams(new FormData($("dashboard-filters")));
-      if ($("outlook-card-filter").value) params.set("card_responsible_code", $("outlook-card-filter").value);
       const data = await api(`/dashboard?${params}`);
       if (sequence !== state.sequence) return;
-      render(data); $("dashboard-content").hidden = false;
-    } catch (error) {if (sequence === state.sequence) {$("dashboard-error").textContent = error.message; $("dashboard-error").hidden = false;}}
-    finally {if (sequence === state.sequence) $("dashboard-loading").hidden = true;}
+      render(data);
+      chartData = {month: data.month, responsible_code: data.responsible_code, variants: data.chart_variants};
+      budgetCharts.render(chartData);
+      renderCategories();
+      $("dashboard-content").hidden = false;
+    } catch (error) {
+      if (sequence === state.sequence) {
+        $("dashboard-error").textContent = error.message;
+        $("dashboard-error").hidden = false;
+      }
+    } finally {
+      if (sequence === state.sequence) $("dashboard-loading").hidden = true;
+    }
   }
   async function openDetails(metric, month = state.month, filters = {}, categoryName = "") {
     const comparison = ["card", "all_cards", "card_expense", "all_expense", "all_income"].includes(metric);
-    const person = metric === "cash" ? "self" : metric === "parents_expense" ? "parents" : state.responsible;
+    const person = filters.responsible_code ?? (metric === "cash" ? "self" : metric === "parents_expense" ? "parents" : state.responsible);
     state.detail = {metric, month, ...(!comparison ? {responsible_code: person} : {}), ...filters}; state.offset = 0;
-    $("dashboard-detail-title").textContent = `${metric === "card" && filters.responsible_code && filters.responsible_code !== "all" ? "Parte prevista do cartão" : labels[metric]}${!comparison ? " · " + (person === "all" ? "Todos" : person === "parents" ? "Pai/Mãe" : "Eu") : ""}${categoryName ? " · " + categoryName : ""} · ${monthText(month)}`;
+    const title = metric === "card" ? "Fatura" : metric === "result" ? "Sobra ou falta" : labels[metric];
+    const phaseLabel = filters.phase && filters.phase !== "all" ? ` · ${phaseNames[filters.phase]}` : "";
+    $("dashboard-detail-title").textContent = `${title}${!comparison || metric === "card" ? " · " + (person === "all" ? "Todos" : person === "parents" ? "Pai/Mãe" : "Eu") : ""}${categoryName ? " · " + categoryName : ""} · ${monthText(month)}${phaseLabel}`;
     if (!$("dashboard-detail-dialog").open) $("dashboard-detail-dialog").showModal();
     $("dashboard-export-pdf").hidden = !["expense", "self_expense", "parents_expense"].includes(metric);
     await loadDetails();
@@ -141,7 +176,7 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
       $("dashboard-export-pdf").disabled = false;
       const cash = data.metric === "cash";
       $("dashboard-detail-total").textContent = `${formatSignedCents(data.total_cents)} · soma de ${data.total} item(ns), em todas as páginas.`;
-      $("dashboard-detail-note").textContent = cash ? "Entradas positivas, saídas negativas. Transferências aparecem nas duas contas e somam zero. Repasses não são receita pessoal. Esta composição não inclui saldo inicial." : ["card","all_cards"].includes(data.metric) ? data.responsible_code && data.responsible_code !== "all" ? "Parte prevista do responsável selecionado, com histórico e estimativas. Créditos entre faturas pertencem à cobrança completa e não são atribuídos ao responsável. Não é o total cobrado pelo banco." : "Total previsto da fatura, com Eu e Pai/Mãe, histórico e estimativas. Créditos entre faturas alteram a cobrança. Pagamentos não diminuem este total; consulte o restante a pagar em Cartões e faturas." : data.metric === "card_expense" ? "Despesas do cartão selecionado, com Eu e Pai/Mãe. Créditos entre faturas mudam a cobrança, sem reduzir a despesa novamente." : data.metric === "all_income" ? "Receitas lançadas e estimativas de Eu e Pai/Mãe, em todos os meios. Estimativa não confirma recebimento; repasses não são receitas pessoais." : data.metric === "all_expense" ? "Despesas de Eu e Pai/Mãe em todos os meios de pagamento. No cartão, vale o mês da fatura. Estimativas ainda podem mudar. Pagar uma fatura não cria outra despesa." : "Valores por parcela/mês da fatura, já com ajustes. Estimativa não é pagamento. Para resultado, despesas contribuem com sinal negativo; receitas com sinal positivo.";
+      $("dashboard-detail-note").textContent = cash ? "Entradas positivas, saídas negativas. Transferências aparecem nas duas contas e somam zero. Repasses não são receita pessoal. Esta composição não inclui saldo inicial." : ["card","all_cards"].includes(data.metric) ? data.responsible_code && data.responsible_code !== "all" ? "Parte do responsável selecionado. Consulte Todos para ver a cobrança completa e os créditos entre faturas." : "Total da fatura conforme os valores selecionados. Consulte o restante a pagar em Cartões e faturas." : data.metric === "card_expense" ? "Despesas do cartão selecionado, com Eu e Pai/Mãe. Créditos entre faturas mudam a cobrança, sem reduzir a despesa novamente." : data.metric === "all_income" ? "Receitas lançadas e estimativas de Eu e Pai/Mãe, em todos os meios. Estimativa não confirma recebimento; repasses não são receitas pessoais." : data.metric === "all_expense" ? "Despesas de Eu e Pai/Mãe em todos os meios de pagamento. No cartão, vale o mês da fatura. Estimativas ainda podem mudar. Pagar uma fatura não cria outra despesa." : "Valores por parcela/mês da fatura, já com ajustes. Estimativa não é pagamento. Para resultado, despesas contribuem com sinal negativo; receitas com sinal positivo.";
       for (const item of data.items) {
         const tr = document.createElement("tr");
         const name = cell(tr, cash ? item.reason : item.description || "Descrição ausente");
@@ -199,21 +234,30 @@ export function createDashboardView({api, dateText, localDate, showEntry, showIn
   try {
     const saved = JSON.parse(localStorage.getItem(preferenceKey));
     if (validMonth(saved?.month)) filters.elements.month.value = saved.month;
-    if (validMonths(saved?.months)) filters.elements.months.value = saved.months;
+    for (const chart of ["budget", "result"]) {
+      const months = saved?.[chart + "_months"] ?? saved?.months;
+      if (validMonths(months)) $(chart + "-horizon").value = months;
+    }
     if (["self", "parents", "all"].includes(saved?.responsible_code)) filters.elements.responsible_code.value = saved.responsible_code;
   } catch {} // Armazenamento bloqueado ou inválido não impede abrir o painel.
   function rememberFilters() {
-    const month = filters.elements.month.value, months = filters.elements.months.value;
-    if (!validMonth(month) || !validMonths(months)) return;
-    try { localStorage.setItem(preferenceKey, JSON.stringify({month, months, responsible_code: filters.elements.responsible_code.value})); } catch {}
+    const month = filters.elements.month.value;
+    if (!validMonth(month)) return;
+    const data = {month, responsible_code: filters.elements.responsible_code.value,
+      budget_months: $("budget-horizon").value, result_months: $("result-horizon").value};
+    try { localStorage.setItem(preferenceKey, JSON.stringify(data)); } catch {}
   }
-  filters.addEventListener("change", event => {rememberFilters(); if (event.target.name === "responsible_code") refresh();});
-  filters.addEventListener("submit", event => {event.preventDefault(); rememberFilters(); refresh();});
+  filters.addEventListener("change", () => { rememberFilters(); refreshBudget(); });
+  filters.addEventListener("submit", event => { event.preventDefault(); rememberFilters(); refreshBudget(); });
+  $("category-phase").addEventListener("change", renderCategories);
+  for (const chart of ["budget", "result"]) $(chart + "-horizon").addEventListener("change", rememberFilters);
   for (const element of document.querySelectorAll("[data-dashboard-metric]")) element.addEventListener("click", () => openDetails(element.dataset.dashboardMetric));
   $("dashboard-detail-previous").addEventListener("click", () => {state.offset = Math.max(0, state.offset-50); loadDetails();});
   $("dashboard-detail-next").addEventListener("click", () => {state.offset += 50; loadDetails();});
   $("dashboard-detail-dialog").addEventListener("close", () => {++state.detailSequence;});
-  $("outlook-card-filter").addEventListener("change", refresh);
-  $("outlook-labels").addEventListener("change", () => {budgetCharts.redraw();cardCharts.redraw();});
-  return {refresh};
+  return {
+    openCard,
+    updateCatalogs: cards.updateCatalogs,
+    refresh: () => Promise.all([refreshBudget(), cards.refresh()]),
+  };
 }

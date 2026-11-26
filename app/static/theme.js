@@ -1,7 +1,7 @@
 /* Preferência somente neste navegador. Sem acesso a dados financeiros. */
 (() => {
-  let theme = "dark";
-  try { if (localStorage.getItem("finance-theme") === "light") theme = "light"; } catch {}
+  let theme = "light";
+  try { if (localStorage.getItem("finance-theme") === "dark") theme = "dark"; } catch {}
   document.documentElement.dataset.theme = theme;
   document.addEventListener("DOMContentLoaded", () => {
     const button = document.getElementById("theme-toggle");
