@@ -17,7 +17,9 @@ Captura da aplicação com dados inteiramente fictícios. Para experimentar, sig
 - Receitas, despesas, categorias e responsabilidades Eu e Pai/Mãe.
 - Compras parceladas, ciclos de cartão, faturas e pagamentos registrados explicitamente.
 - Gastos recorrentes e projeções, com distinção entre registrado e estimado.
-- Orçamento, gráficos, filtros, composição dos valores e fluxo de caixa.
+- Orçamento com gráficos que filtram lançamentos e estimativas e permitem ajustar o período dos comparativos mensais.
+- Cartões do mês com composição da fatura e filtros de mês, responsável e tipo de valor.
+- Busca por descrição no fluxo de caixa, com a data efetiva das quitações registradas para despesas sem cartão.
 - Visão geral de Eu, Pai/Mãe ou Todos, com compromissos a cadastrar e pagar e comparação das faturas por cartão.
 - Exportação mensal das despesas em PDF, com estimativas identificadas e total previsto do mês seguinte.
 - Edição e cancelamento auditados de lançamentos, inclusive despesas próprias pagas sem conta.
