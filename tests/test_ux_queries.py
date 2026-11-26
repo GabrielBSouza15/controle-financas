@@ -130,6 +130,7 @@ def test_invoice_estimates_use_card_cycle_without_account_or_writes(client):
     rows=overview(client,**params)["items"]
     assert [r["forecast_cents"] for r in rows]==[3000,6000]
     assert all(r["source"]=="forecast" and r["registered_count"]==0 for r in rows)
+    assert all(r["due_date"] is None for r in rows)
     assert all(r["statement_total_cents"]==0 and r["payment_remaining_cents"]==0 for r in rows)
     assert [r["projected_total_cents"] for r in rows]==[3000,6000]
     d=client.get("/api/invoices/overview/details",params={"card_id":client.card,"month":"2026-12","include_forecasts":True,"limit":1,"offset":1}).json()
@@ -148,6 +149,7 @@ def test_invoice_forecast_confirmation_suspension_and_skip_do_not_duplicate(clie
     assert overview(client,**params)["items"][0]["projected_total_cents"]==3000
     assert decide(client,row["id"],occurred_on="2026-10-05",actual_cents=2901).status_code==200
     r=overview(client,**params)["items"][0]
+    assert r["due_date"] == "2026-11-05"
     assert (r["statement_total_cents"],r["forecast_cents"],r["projected_total_cents"],r["payment_remaining_cents"])==(2901,0,2901,2901)
     change=client.post(f'/api/recurrences/{row["id"]}/changes',json={"request_key":"suspend-bill","reason":"Suspensão fictícia","effective_month":"2026-11","suspended":True})
     assert change.status_code==200,change.text

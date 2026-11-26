@@ -27,6 +27,10 @@ def test_paid_mark_persists_exact_installments_without_cash_or_accounts(ready):
     assert len(result["items"])==3
     assert all(p["payment_status"]=="Pago" and p["pending_cents"]==0 for p in result["items"])
     assert sum(p["amount_cents"] for p in result["items"])==10001
+    assert {p["effective_on"] for p in result["items"]} == {"2026-10-01"}
+    result = ready.get("/api/personal/flow?date_from=2026-10-01&date_to=2026-10-01").json()
+    assert len(result["items"]) == 3
+    assert ready.get("/api/personal/flow?date_from=2026-11-01&date_to=2026-12-31").json()["total"] == 0
     budget=ready.get("/api/dashboard?month=2026-10&months=3").json()["budget"]
     assert budget["total_self_expense_cents"]==3334
     assert budget["cash_out_cents"]==0

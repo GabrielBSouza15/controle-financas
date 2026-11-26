@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import create_app
 from app.services.adoption import adopt
-from test_settlements import client, entry, ORIGIN
+from test_settlements import allocations, client, entry, event, post as post_event, ORIGIN
 from test_history_integration import load
 
 def post(c,path,data):
@@ -68,6 +68,77 @@ def test_flow_chronology_pagination_and_pending(client):
     assert next_page["items"][0]["date"] < result["items"][0]["date"]
 
 
+def flow_between(client, start, end, query):
+    response = client.get("/api/personal/flow", params={"date_from": start, "date_to": end, "q": query})
+    assert response.status_code == 200, response.text
+    return response.json()["items"]
+
+
+def test_flow_keeps_original_pix_date_when_parents_budget_moves_to_next_month(client):
+    purchase = entry(
+        client, description="Compra para os pais", occurred_on="2026-10-31",
+        card_id=None, payment_method="pix_debit", responsible_id=2,
+        parents_repayment="pending", total_cents=1000,
+    )
+    rows = flow_between(client, "2026-10-31", "2026-10-31", "para os pais")
+    assert [(r["entry_id"], r["date"], r["month"], r["pending_cents"]) for r in rows] == [
+        (purchase["id"], "2026-10-31", "2026-11-01", 1000)
+    ]
+    assert flow_between(client, "2026-11-01", "2026-11-30", "para os pais") == []
+
+
+def test_flow_splits_pix_payment_from_pending_by_effective_date_and_reversal(client):
+    purchase = entry(
+        client, description="PIX parcial fictício", occurred_on="2026-09-30",
+        card_id=None, payment_method="pix_debit", total_cents=1000,
+    )
+    payment = post_event(client, event(
+        client, kind="expense_payment", occurred_on="2026-10-01", invoice_id=None,
+        amount_cents=400, allocations=allocations(purchase, 400),
+    ))
+    rows = flow_between(client, "2026-09-30", "2026-10-01", "pix parcial")
+    assert [(r["date"], r.get("effective_on"), r["amount_cents"], r["pending_cents"]) for r in rows] == [
+        ("2026-10-01", "2026-10-01", 400, 0),
+        ("2026-09-30", None, 600, 600),
+    ]
+    assert client.post(f"/api/settlements/{payment['id']}/reverse", json={
+        "request_key": "reverse-pix", "reason": "Informação fictícia corrigida",
+    }).status_code == 200
+    assert flow_between(client, "2026-10-01", "2026-10-01", "pix parcial") == []
+    rows = flow_between(client, "2026-09-30", "2026-09-30", "pix parcial")
+    assert len(rows) == 1 and rows[0]["pending_cents"] == 1000
+
+
+def test_flow_search_finds_a_card_purchase_before_pagination_in_a_partial_month(client):
+    purchase = entry(
+        client, description="Ração do cachorro", occurred_on="2026-10-10",
+        installment_count=2,
+    )
+    entry(client, request_key="newer", description="Outra compra", occurred_on="2026-11-10")
+    entry(
+        client, request_key="pix", description="Ração paga por PIX",
+        occurred_on="2026-11-01", payment_method="pix", card_id=None,
+    )
+    params = {"date_from": "2026-11-05", "date_to": "2026-12-31", "limit": 1}
+    unfiltered = client.get("/api/personal/flow", params=params).json()
+    assert unfiltered["total"] == 3
+    assert unfiltered["items"][0]["entry_id"] != purchase["id"]
+
+    response = client.get("/api/personal/flow", params=params | {"q": "  RACAO  "})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["total"] == 2
+    assert result["items"][0]["entry_id"] == purchase["id"]
+    assert result["items"][0]["date"] == "2026-12-01"
+    assert result["items"][0]["purchase_on"] == "2026-10-10"
+
+    next_page = client.get("/api/personal/flow", params=params | {"q": "racao", "offset": 1}).json()
+    assert next_page["items"][0]["entry_id"] == purchase["id"]
+    assert next_page["items"][0]["date"] == "2026-11-01"
+    assert next_page["items"][0]["scheduled_on"] == "2026-11-05"
+    assert client.get("/api/personal/flow", params=params | {"q": "sem correspondência"}).json()["total"] == 0
+
+
 def test_subtract_is_exact_idempotent_and_cannot_overdraw(client):
     post(client,"reinvestment",dict(request_key="fictitious-opening",version=0,mode="add",amount_cents=20000))
     data=dict(request_key="subtract",version=1,mode="subtract",amount_cents=10001)
@@ -78,7 +149,6 @@ def test_subtract_is_exact_idempotent_and_cannot_overdraw(client):
     assert client.get("/api/personal/reinvestment").json()==dict(amount_cents=9999,version=2)
     assert client.post("/api/personal/reinvestment",json=data|dict(request_key="old-mode",version=2,mode="replace")).status_code==422
     assert client.get("/api/settlements").json()["cash_out_cents"]==0
-
 
 
 def test_legacy_replace_receipt_replays_without_reapplying(client):
@@ -126,7 +196,6 @@ def test_personal_commands_after_startup_with_history(client, tmp_path, adopted)
             response=c.post(endpoint,json={})
             assert response.status_code==409
             assert response.json()["error"]["code"]=="history_candidate_restricted"
-
 
 
 @pytest.mark.parametrize("method,person,expected_month", [("pix",1,"2026-10"),("credit",1,"2026-11"),("credit",2,"2026-11")])

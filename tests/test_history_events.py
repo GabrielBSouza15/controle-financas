@@ -44,6 +44,27 @@ def test_old_paid_never_becomes_new_cash_and_overpayment_rolls_back(client):
  assert client.get("/api/settlements").json()["cash_out_cents"]==0
  assert client.get("/api/history/records/1").json()["payment_state"]=="paid_undated"
 
+def test_flow_places_dated_history_payment_separately_from_undated_evidence(client):
+    def use_pix(document):
+        for row in document["rows"][:2]:
+            row["proposal"].update(payment_method="pix", card_code=None, simulated_cycle=None)
+
+    prepare(client, use_pix)
+    response = payment(client, kind="expense_payment", occurred_on="2025-02-03")
+    assert response.status_code == 200, response.text
+    flow = client.get("/api/personal/flow?date_from=2025-01-01&date_to=2025-02-28")
+    assert flow.status_code == 200, flow.text
+    expenses = [
+        (row["date"], row["payment_status"], row["amount_cents"])
+        for row in flow.json()["items"] if row["kind"] == "expense"
+    ]
+    assert expenses == [
+        ("2025-02-03", "Pago", 3000),
+        ("2025-01-03", "Pendente", 4000),
+        ("2025-01-03", "Pago sem data (planilha)", 5000),
+    ]
+
+
 def test_direct_parents_payment_covers_both_dimensions_without_own_cash(client):
  prepare(client)
  r=payment(client,payer_code="parents",account_id=None,amount_cents=7000,allocations=[{"record_id":2,"amount_cents":7000}])
