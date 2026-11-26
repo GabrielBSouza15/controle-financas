@@ -35,31 +35,37 @@ def entry_has_settlement(session, identity, *, include_payment_mark=True):
         Obligation.id == SettlementAllocation.obligation_id).where(Obligation.entry_id == identity).limit(1)) is not None
 
 
-def allocation_totals(session, obligation_ids):
+def allocation_totals(session, obligation_ids, *, include_payment_dates=False):
     identities = list(obligation_ids)
     result = {identity: {"payment_cents": 0, "parents_covered_cents": 0, "credit_applied_cents": 0} for identity in identities}
     if not identities:
         return result
     statement = (select(SettlementAllocation.id, SettlementAllocation.obligation_id, SettlementAllocation.amount_cents,
-                         FinancialEvent.kind, Responsible.code)
+                         FinancialEvent.kind, Responsible.code, FinancialEvent.occurred_on)
         .join(AllocationBatch, AllocationBatch.id == SettlementAllocation.batch_id)
         .join(FinancialEvent, FinancialEvent.id == AllocationBatch.event_id)
         .outerjoin(Responsible, Responsible.id == FinancialEvent.payer_id)
         .where(SettlementAllocation.obligation_id.in_(identities), AllocationBatch.posted.is_(True), active_event_filter()))
     rows = session.execute(statement).all()
     offsets = offset_totals(session, [row[0] for row in rows])
-    for allocation_id, identity, amount, kind, code in rows:
+    for allocation_id, identity, amount, kind, code, occurred_on in rows:
         amount -= offsets[allocation_id]
         if kind != "repayment":
             result[identity]["payment_cents"] += amount
+        if include_payment_dates and amount > 0 and kind in {"expense_payment", "income_receipt"}:
+            by_date = result[identity].setdefault("payments_by_date", {})
+            by_date[occurred_on] = by_date.get(occurred_on, 0) + amount
         if kind == "repayment" or code == "parents":
             result[identity]["parents_covered_cents"] += amount
     from .invoice_credits import obligation_credit_totals
     from .models import EntryPaymentMark
-    for identity, amount in session.execute(select(Obligation.id, Obligation.amount_cents)
+    for identity, amount, occurred_on in session.execute(select(Obligation.id, Obligation.amount_cents, Entry.occurred_on)
             .join(EntryPaymentMark, EntryPaymentMark.entry_id == Obligation.entry_id)
+            .join(Entry, Entry.id == Obligation.entry_id)
             .where(Obligation.id.in_(identities))):
         result[identity]["payment_cents"] += amount
+        if include_payment_dates:
+            result[identity]["payments_by_date"] = {occurred_on: amount}
     from .models import BillPaymentMark
     for mark in session.scalars(select(BillPaymentMark).where(BillPaymentMark.obligation_id.in_(identities))):
         result[mark.obligation_id]["payment_cents"] += mark.amount_cents
